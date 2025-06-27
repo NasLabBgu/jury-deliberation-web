@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>JurorDSL Parser with Tree</title>
+  <script src="https://unpkg.com/ohm-js@16.0.0/dist/ohm.min.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 1em; max-width: 800px; margin: auto; }
+    textarea { width: 100%; height: 160px; font-family: monospace; font-size: 1rem; padding: 0.5em; }
+    .result { margin-top: 1em; padding: 1em; background: #f9f9f9; border: 1px solid #ccc; }
+    .valid { color: green; }
+    .invalid { color: red; white-space: pre-wrap; }
+    ul.tree { list-style-type: none; padding-left: 1em; font-family: monospace; }
+    ul.tree li { margin-left: 1em; }
+  </style>
+</head>
+<body>
+  <h1>JurorDSL Parser and Tree</h1>
+  <textarea id="input" placeholder="Enter JurorDSL command..."></textarea>
+  <div id="result" class="result">Waiting for input...</div>
+  <div id="tree" class="result"></div>
+
+  <script>
+    const grammarText = `
+      JurorDSL {
+        Main = Statement+
+
+        Statement =
+            GenerateStmt
+          | UploadStmt
+          | UseStmt
+          | RepeatStmt
+          | EvaluateStmt
+
+        GenerateStmt =
+          "generate" number? "jurors" InteractivelyOpt
+
+        UploadStmt =
+          "upload" filename
+
+        UseStmt =
+          "use" UseAllOrEvery
+
+        UseAllOrEvery =
+            "all"                             -- all
+          | "every" number "combinations" WeightOpt  -- every
+
+        RepeatStmt =
+          "repeat" number "times"
+
+        EvaluateStmt =
+          "evaluate"
+          ParticipationOpt
+          ArgumentsOpt
+          DiscussionOpt
+          PersuasionOpt
+          ConsistencyOpt
+          SensitivityOpt
+          ResultOpt
+
+        InteractivelyOpt = "interactively"?
+        WeightOpt = ("weighted by" functionArrow)?
+        ParticipationOpt = ("participation" ("quantity" | "quality")?)?
+        ArgumentsOpt = "arguments"?
+        DiscussionOpt = "discussion"?
+        PersuasionOpt = "persuasion"?
+        ConsistencyOpt = "consistency"?
+        SensitivityOpt = "juries sensitivity"?
+        ResultOpt = "result"?
+
+        filename = letter+ "." letter+
+        functionArrow = function "->" chance
+        function = letter+
+        chance = digit+ ("." digit+)?
+        number = digit+
+
+        space += "\\t"
+      }
+    `;
+
+    const grammar = ohm.grammar(grammarText);
+
+    function buildTree(node) {
+      const li = document.createElement('li');
+
+      // If this is a terminal/leaf node
+      if (node.isTerminal()) {
+        li.textContent = `"${node.sourceString}"`;
+      } else {
+        // Non-terminal node with children
+        const label = node.ctorName || 'anon';
+        li.innerHTML = `<strong>${label}</strong>`;
+        const ul = document.createElement('ul');
+        ul.classList.add('tree');
+        for (const child of node.children) {
+          ul.appendChild(buildTree(child));
+        }
+        li.appendChild(ul);
+      }
+
+      return li;
+    }
+
+    function renderTree(matchResult) {
+      const treeEl = document.getElementById('tree');
+      treeEl.innerHTML = '';
+
+      if (!matchResult.succeeded()) return;
+
+      const ul = document.createElement('ul');
+      ul.classList.add('tree');
+      ul.appendChild(buildTree(matchResult._cst));
+      treeEl.appendChild(ul);
+    }
+
+    function checkInput() {
+      const input = document.getElementById('input').value.trim();
+      const resultEl = document.getElementById('result');
+
+      if (!input) {
+        resultEl.textContent = "Waiting for input...";
+        document.getElementById('tree').innerHTML = '';
+        return;
+      }
+
+      const matchResult = grammar.match(input);
+      if (matchResult.succeeded()) {
+        resultEl.innerHTML = '<span class="valid">✅ Input is valid JurorDSL.</span>';
+        renderTree(matchResult);
+      } else {
+        resultEl.innerHTML = '<span class="invalid">❌ Invalid input:<br>' + matchResult.message + '</span>';
+        document.getElementById('tree').innerHTML = '';
+      }
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      document.getElementById('input').addEventListener('input', checkInput);
+      checkInput();
+    });
+  </script>
+</body>
+</html>
