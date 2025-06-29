@@ -27,33 +27,36 @@
     </style>
 </head>
 <body>
-    <table>
+    <table id="mainTable">
         <tbody>
-            <tr>
+            <tr id="generateRow">
                 <td>
                     <span class="controls" id="btn_0" onclick="togglePlay(0)">▶</span>
                 </td>
                 <td>
-                    generate <input type="number" min="1" value="5" style="width:3em;"> jurors interactively, 
-                    <label for="fileInput" style="cursor:pointer; color:blue; text-decoration:underline;">upload</label>
-                    <input type="file" id="fileInput" style="display:none;" onchange="showFilename(event)">
-                    <span id="filename" style="margin-left:0.5em;"></span>
+                    generate <input type="number" min="1" value="5" style="width:3em;"> jurors interactively
                 </td>
             </tr>
-            <tr>
+            <tr id="uploadRow">
                 <td>
-                    <span class="controls" id="btn_1" onclick="togglePlay(1)">▶</span>
+                    <!-- <span class="controls" id="btn_0" onclick="togglePlay(0)">▶</span> -->
                 </td>
                 <td>
-                    use <select class="dropdown"><option>all</option><option>every second file</option></select>
+                    <label for="fileInput" id="uploadLabel" style="cursor:pointer; color:blue; text-decoration:underline;">upload</label>
+                    <input type="file" id="fileInput" style="display:none;" multiple onchange="handleFiles(event)">
                 </td>
             </tr>
+            <tr id="noFilesRow">
+                <td></td>
+                <td style="color: #888;">No files uploaded yet.</td>
+            </tr>
+            <!-- Filename rows will be inserted here -->
             <tr>
                 <td>
                     <span class="controls" id="btn_2" onclick="togglePlay(2)">▶</span>
                 </td>
                 <td>
-                    repeat <input type="number" min="1" value="3" style="width:3em;"> times
+                    repeat <input type="number" min="1" value="10" style="width:3em;"> times
                 </td>
             </tr>
             <tr>
@@ -72,6 +75,36 @@
 
     <script>
         const state = {};
+        let uploadedFiles = [];
+
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM loaded, setting up file upload');
+            const uploadLabel = document.getElementById('uploadLabel');
+            const fileInput = document.getElementById('fileInput');
+            
+            if (uploadLabel && fileInput) {
+                uploadLabel.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    console.log('Upload label clicked');
+                    fileInput.click();
+                });
+                
+                fileInput.addEventListener('change', function(event) {
+                    console.log('File input change event fired');
+                    handleFiles(event);
+                });
+                
+                // Also listen for input event as fallback
+                fileInput.addEventListener('input', function(event) {
+                    console.log('File input input event fired');
+                    handleFiles(event);
+                });
+                
+                console.log('Event listeners attached successfully');
+            } else {
+                console.error('Upload elements not found');
+            }
+        });
 
         function showButton(i) {
             const btn = document.getElementById(`btn_${i}`);
@@ -88,18 +121,91 @@
             state[i] = !state[i];
             if (btn) {
                 btn.textContent = state[i] ? "⏸" : "▶";
-                btn.style.display = 'inline'; // Ensure it's visible when toggled
+                btn.style.display = 'inline';
             }
         }
 
-        function showFilename(event) {
-            const fileInput = event.target;
-            const filenameSpan = document.getElementById('filename');
-            if (fileInput.files && fileInput.files.length > 0) {
-                filenameSpan.textContent = fileInput.files[0].name;
+        function handleFiles(event) {
+            console.log('handleFiles called');
+            const files = Array.from(event.target.files);
+            console.log('Files selected:', files);
+            
+            if (files.length > 0) {
+                console.log('Removing no files row');
+                removeNoFilesRow();
+                files.forEach(file => {
+                    console.log('Adding file row for:', file.name);
+                    addFileRow(file.name);
+                });
             } else {
-                filenameSpan.textContent = '';
+                console.log('No files selected');
             }
+            
+            // Reset input so same file can be uploaded again if needed
+            event.target.value = '';
+        }
+
+        function addFileRow(filename) {
+            console.log('addFileRow called with:', filename);
+            if (uploadedFiles.includes(filename)) {
+                console.log('File already exists, skipping:', filename);
+                return;
+            }
+            
+            uploadedFiles.push(filename);
+            console.log('Current uploaded files:', uploadedFiles);
+            
+            const table = document.getElementById('mainTable').getElementsByTagName('tbody')[0];
+            const uploadRow = document.getElementById('uploadRow');
+            
+            if (!table || !uploadRow) {
+                console.error('Table or uploadRow not found');
+                return;
+            }
+            
+            const row = document.createElement('tr');
+            row.setAttribute('data-filename', filename);
+            row.innerHTML = `
+                <td></td>
+                <td>
+                    <span style="font-weight:bold;">${filename}</span>
+                    <button type="button" onclick="deleteFileRow('${filename}')" style="margin-left:1em;">Delete</button>
+                </td>
+            `;
+            
+            // Insert after uploadRow but before noFilesRow (if it exists)
+            const nextSibling = uploadRow.nextSibling;
+            table.insertBefore(row, nextSibling);
+            console.log('File row added successfully');
+        }
+
+        function deleteFileRow(filename) {
+            uploadedFiles = uploadedFiles.filter(f => f !== filename);
+            const table = document.getElementById('mainTable').getElementsByTagName('tbody')[0];
+            const rows = table.querySelectorAll('tr[data-filename]');
+            rows.forEach(row => {
+                if (row.getAttribute('data-filename') === filename) {
+                    table.removeChild(row);
+                }
+            });
+            if (uploadedFiles.length === 0) addNoFilesRow();
+        }
+
+        function removeNoFilesRow() {
+            const row = document.getElementById('noFilesRow');
+            if (row) {
+                row.parentNode.removeChild(row);
+            }
+        }
+
+        function addNoFilesRow() {
+            if (document.getElementById('noFilesRow')) return;
+            const table = document.getElementById('mainTable').getElementsByTagName('tbody')[0];
+            const uploadRow = document.getElementById('uploadRow');
+            const row = document.createElement('tr');
+            row.id = 'noFilesRow';
+            row.innerHTML = '<td></td><td style="color: #888;">No files uploaded yet.</td>';
+            table.insertBefore(row, uploadRow.nextSibling);
         }
     </script>
 </body>
