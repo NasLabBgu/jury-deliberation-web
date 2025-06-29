@@ -34,7 +34,7 @@
                     <span class="controls" id="btn_0" onclick="togglePlay(0)">▶</span>
                 </td>
                 <td>
-                    generate <input type="number" min="1" value="5" style="width:3em;"> jurors interactively
+                    generate <input type="number" min="1" value="5" style="width:3em;" id="jurorCount"> jurors interactively
                 </td>
             </tr>
             <tr id="uploadRow">
@@ -56,7 +56,7 @@
                     <span class="controls" id="btn_2" onclick="togglePlay(2)">▶</span>
                 </td>
                 <td>
-                    repeat <input type="number" min="1" value="10" style="width:3em;"> times
+                    repeat <input type="number" min="1" value="10" style="width:3em;" id="repeatCount"> times
                 </td>
             </tr>
             <tr>
@@ -68,6 +68,15 @@
                     <label><input type="checkbox" id="cb_participation"> participation</label>
                     <label><input type="checkbox" id="cb_quality"> quality</label>
                     <label><input type="checkbox" id="cb_arguments"> arguments</label>
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <span class="controls" id="btn_run" onclick="runProcess()">▶</span>
+                </td>
+                <td>
+                    <button id="runButton" onclick="runProcess()" style="padding:0.5em 1em; background:#007bff; color:white; border:none; border-radius:4px; cursor:pointer;">Run Process</button>
+                    <span id="runStatus" style="margin-left:1em; color:#666;"></span>
                 </td>
             </tr>
         </tbody>
@@ -169,7 +178,11 @@
                 <td></td>
                 <td>
                     <span style="font-weight:bold;">${filename}</span>
-                    <button type="button" onclick="deleteFileRow('${filename}')" style="margin-left:1em;">Delete</button>
+                    <div style="margin-left:1em; display:inline-block;">
+                        <label><input type="radio" name="category_${filename}" value="juror" checked> juror</label>
+                        <label style="margin-left:0.5em;"><input type="radio" name="category_${filename}" value="case"> case</label>
+                        <button type="button" onclick="deleteFileRow('${filename}')" style="margin-left:1em;">Delete</button>
+                    </div>
                 </td>
             `;
             
@@ -206,6 +219,98 @@
             row.id = 'noFilesRow';
             row.innerHTML = '<td></td><td style="color: #888;">No files uploaded yet.</td>';
             table.insertBefore(row, uploadRow.nextSibling);
+        }
+
+        async function uploadFilesToServer() {
+            const files = [];
+            
+            // Collect all uploaded files with their categories
+            uploadedFiles.forEach(filename => {
+                const radioButtons = document.querySelectorAll(`input[name="category_${filename}"]:checked`);
+                const category = radioButtons.length > 0 ? radioButtons[0].value : 'juror';
+                files.push({
+                    filename: filename,
+                    category: category
+                });
+            });
+
+            if (files.length === 0) {
+                document.getElementById('runStatus').textContent = 'No files to upload';
+                return false;
+            }
+
+            try {
+                document.getElementById('runStatus').textContent = 'Clearing existing files and uploading...';
+                
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({ files: files })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    console.log('Files uploaded successfully:', result);
+                    document.getElementById('runStatus').textContent = result.message || `Uploaded ${result.uploaded_files.length} files`;
+                    return true;
+                } else {
+                    document.getElementById('runStatus').textContent = `Upload error: ${result.error}`;
+                    return false;
+                }
+            } catch (error) {
+                console.error('Upload error:', error);
+                document.getElementById('runStatus').textContent = `Upload failed: ${error.message}`;
+                return false;
+            }
+        }
+
+        async function runProcess() {
+            // First upload files
+            const uploadSuccess = await uploadFilesToServer();
+            if (!uploadSuccess) return;
+
+            // Get form values
+            const jurorCount = document.getElementById('jurorCount').value;
+            const repeatCount = document.getElementById('repeatCount').value;
+            
+            const evaluationOptions = [];
+            if (document.getElementById('cb_participation').checked) evaluationOptions.push('participation');
+            if (document.getElementById('cb_quality').checked) evaluationOptions.push('quality');
+            if (document.getElementById('cb_arguments').checked) evaluationOptions.push('arguments');
+
+            try {
+                document.getElementById('runStatus').textContent = 'Starting process...';
+                
+                const response = await fetch('/run', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        juror_count: parseInt(jurorCount),
+                        repeat_count: parseInt(repeatCount),
+                        evaluation_options: evaluationOptions
+                    })
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    console.log('Process started:', result);
+                    document.getElementById('runStatus').textContent = result.message;
+                    document.getElementById('runStatus').style.color = '#28a745';
+                } else {
+                    document.getElementById('runStatus').textContent = `Error: ${result.error}`;
+                    document.getElementById('runStatus').style.color = '#dc3545';
+                }
+            } catch (error) {
+                console.error('Run error:', error);
+                document.getElementById('runStatus').textContent = `Run failed: ${error.message}`;
+                document.getElementById('runStatus').style.color = '#dc3545';
+            }
         }
     </script>
 </body>
