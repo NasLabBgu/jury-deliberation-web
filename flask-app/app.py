@@ -56,6 +56,7 @@ def upload_files():
         for file_info in files_data['files']:
             filename = secure_filename(file_info['filename'])
             category = file_info.get('category', 'juror')  # default to juror
+            weight = file_info.get('weight', 100)  # default to 100
             
             # Determine target directory
             target_dir = JUROR_DIR if category == 'juror' else CASE_DIR
@@ -64,15 +65,16 @@ def upload_files():
             # In a real implementation, you'd handle the actual file upload
             filepath = os.path.join(target_dir, filename)
             
-            # Create placeholder file
+            # Create placeholder file with weight information
             with open(filepath, 'w') as f:
-                f.write(f"Placeholder for {filename} (category: {category})")
+                f.write(f"Placeholder for {filename} (category: {category}, weight: {weight})")
             
-            print(f"Created: {filepath}")
+            print(f"Created: {filepath} (weight: {weight})")
             
             results.append({
                 'filename': filename,
                 'category': category,
+                'weight': weight,
                 'path': filepath,
                 'status': 'uploaded'
             })

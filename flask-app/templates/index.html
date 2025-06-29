@@ -34,16 +34,16 @@
                     generate <input type="number" min="1" value="5" style="width:3em;" id="jurorCount"> jurors interactively
                 </td>
             </tr>
+            <tr id="noFilesRow">
+                <td style="color: #888;">No files yet.</td>
+            </tr>
+            <!-- Filename rows will be inserted here -->
             <tr id="uploadRow">
                 <td>
                     <label for="fileInput" id="uploadLabel" style="cursor:pointer; color:blue; text-decoration:underline;">upload</label>
                     <input type="file" id="fileInput" style="display:none;" multiple onchange="handleFiles(event)">
                 </td>
             </tr>
-            <tr id="noFilesRow">
-                <td style="color: #888;">No files uploaded yet.</td>
-            </tr>
-            <!-- Filename rows will be inserted here -->
             <tr>
                 <td>
                     repeat <input type="number" min="1" value="10" style="width:3em;" id="repeatCount"> times
@@ -164,14 +164,14 @@
                     <div style="margin-left:1em; display:inline-block;">
                         <label><input type="radio" name="category_${filename}" value="juror" checked> juror</label>
                         <label style="margin-left:0.5em;"><input type="radio" name="category_${filename}" value="case"> case</label>
+                        <label style="margin-left:0.5em;">weight: <input type="number" id="weight_${filename}" min="0" step="1" value="100" style="width:4em;"></label>
                         <button type="button" onclick="deleteFileRow('${filename}')" style="margin-left:1em;">Delete</button>
                     </div>
                 </td>
             `;
             
-            // Insert after uploadRow but before noFilesRow (if it exists)
-            const nextSibling = uploadRow.nextSibling;
-            table.insertBefore(row, nextSibling);
+            // Insert before uploadRow (so files appear above the upload row)
+            table.insertBefore(row, uploadRow);
             console.log('File row added successfully');
         }
 
@@ -200,20 +200,25 @@
             const uploadRow = document.getElementById('uploadRow');
             const row = document.createElement('tr');
             row.id = 'noFilesRow';
-            row.innerHTML = '<td style="color: #888;">No files uploaded yet.</td>';
-            table.insertBefore(row, uploadRow.nextSibling);
+            row.innerHTML = '<td style="color: #888;">No files yet.</td>';
+            table.insertBefore(row, uploadRow);
         }
 
         async function uploadFilesToServer() {
             const files = [];
             
-            // Collect all uploaded files with their categories
+            // Collect all uploaded files with their categories and weights
             uploadedFiles.forEach(filename => {
                 const radioButtons = document.querySelectorAll(`input[name="category_${filename}"]:checked`);
                 const category = radioButtons.length > 0 ? radioButtons[0].value : 'juror';
+                
+                const weightInput = document.getElementById(`weight_${filename}`);
+                const weight = weightInput ? parseInt(weightInput.value) || 100 : 100;
+                
                 files.push({
                     filename: filename,
-                    category: category
+                    category: category,
+                    weight: weight
                 });
             });
 
