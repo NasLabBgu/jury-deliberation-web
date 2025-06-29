@@ -1,3 +1,9 @@
 .venv/
 .vscode/
 __pycache__/
+
+# API keys and sensitive files
+api_key
+**/api_key
+flask-app/api_key
+flask-app/backend/api_key
