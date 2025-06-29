@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Interactive Table</title>
+    <style>
+        table {
+            width: 60%;
+            margin: 2rem auto;
+            border-collapse: collapse;
+        }
+        td {
+            padding: 1rem;
+            border: 1px solid #ccc;
+            position: relative;
+        }
+        .controls {
+            display: none;
+        }
+        tr:hover .controls {
+            display: inline;
+            cursor: pointer;
+        }
+        .dropdown {
+            margin: 0 2px;
+        }
+    </style>
+</head>
+<body>
+    <table>
+        <tbody>
+            <tr>
+                <td>
+                    <span class="controls" id="btn_0" onclick="togglePlay(0)">▶</span>
+                </td>
+                <td>
+                    generate <input type="number" min="1" value="5" style="width:3em;"> jurors interactively, 
+                    <label for="fileInput" style="cursor:pointer; color:blue; text-decoration:underline;">upload</label>
+                    <input type="file" id="fileInput" style="display:none;" onchange="showFilename(event)">
+                    <span id="filename" style="margin-left:0.5em;"></span>
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <span class="controls" id="btn_1" onclick="togglePlay(1)">▶</span>
+                </td>
+                <td>
+                    use <select class="dropdown"><option>all</option><option>every second file</option></select>
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <span class="controls" id="btn_2" onclick="togglePlay(2)">▶</span>
+                </td>
+                <td>
+                    repeat <input type="number" min="1" value="3" style="width:3em;"> times
+                </td>
+            </tr>
+            <tr>
+                <td>
+                    <span class="controls" id="btn_3" onclick="togglePlay(3)">▶</span>
+                </td>
+                <td>
+                    evaluate 
+                    <label><input type="checkbox" id="cb_participation"> participation</label>
+                    <label><input type="checkbox" id="cb_quality"> quality</label>
+                    <label><input type="checkbox" id="cb_arguments"> arguments</label>
+                </td>
+            </tr>
+        </tbody>
+    </table>
+
+    <script>
+        const state = {};
+
+        function showButton(i) {
+            const btn = document.getElementById(`btn_${i}`);
+            if (btn) btn.style.display = 'inline';
+        }
+
+        function hideButton(i) {
+            const btn = document.getElementById(`btn_${i}`);
+            if (btn && !state[i]) btn.style.display = 'none';
+        }
+
+        function togglePlay(i) {
+            const btn = document.getElementById(`btn_${i}`);
+            state[i] = !state[i];
+            if (btn) {
+                btn.textContent = state[i] ? "⏸" : "▶";
+                btn.style.display = 'inline'; // Ensure it's visible when toggled
+            }
+        }
+
+        function showFilename(event) {
+            const fileInput = event.target;
+            const filenameSpan = document.getElementById('filename');
+            if (fileInput.files && fileInput.files.length > 0) {
+                filenameSpan.textContent = fileInput.files[0].name;
+            } else {
+                filenameSpan.textContent = '';
+            }
+        }
+    </script>
+</body>
+</html>
