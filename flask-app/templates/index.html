@@ -68,7 +68,7 @@
 
     <script>
         const state = {};
-        let uploadedFiles = [];
+        let uploadedFiles = []; // Store file objects, not just filenames
 
         document.addEventListener('DOMContentLoaded', function() {
             console.log('DOM loaded, setting up file upload');
@@ -128,7 +128,12 @@
                 removeNoFilesRow();
                 files.forEach(file => {
                     console.log('Adding file row for:', file.name);
-                    addFileRow(file.name);
+                    // Store the actual file object with its name
+                    const fileObj = {
+                        file: file,
+                        name: file.name
+                    };
+                    addFileRow(fileObj);
                 });
             } else {
                 console.log('No files selected');
@@ -138,15 +143,16 @@
             event.target.value = '';
         }
 
-        function addFileRow(filename) {
-            console.log('addFileRow called with:', filename);
-            if (uploadedFiles.includes(filename)) {
-                console.log('File already exists, skipping:', filename);
+        function addFileRow(fileObj) {
+            console.log('addFileRow called with:', fileObj.name);
+            // Check if file already exists by name
+            if (uploadedFiles.some(f => f.name === fileObj.name)) {
+                console.log('File already exists, skipping:', fileObj.name);
                 return;
             }
             
-            uploadedFiles.push(filename);
-            console.log('Current uploaded files:', uploadedFiles);
+            uploadedFiles.push(fileObj);
+            console.log('Current uploaded files:', uploadedFiles.map(f => f.name));
             
             const table = document.getElementById('mainTable').getElementsByTagName('tbody')[0];
             const uploadRow = document.getElementById('uploadRow');
@@ -157,15 +163,15 @@
             }
             
             const row = document.createElement('tr');
-            row.setAttribute('data-filename', filename);
+            row.setAttribute('data-filename', fileObj.name);
             row.innerHTML = `
                 <td>
-                    <span style="font-weight:bold;">${filename}</span>
+                    <span style="font-weight:bold;">${fileObj.name}</span>
                     <div style="margin-left:1em; display:inline-block;">
-                        <label><input type="radio" name="category_${filename}" value="juror" checked> juror</label>
-                        <label style="margin-left:0.5em;"><input type="radio" name="category_${filename}" value="case"> case</label>
-                        <label style="margin-left:0.5em;">weight: <input type="number" id="weight_${filename}" min="0" step="1" value="100" style="width:4em;"></label>
-                        <button type="button" onclick="deleteFileRow('${filename}')" style="margin-left:1em;">Delete</button>
+                        <label><input type="radio" name="category_${fileObj.name}" value="juror" checked> juror</label>
+                        <label style="margin-left:0.5em;"><input type="radio" name="category_${fileObj.name}" value="case"> case</label>
+                        <label style="margin-left:0.5em;">weight: <input type="number" id="weight_${fileObj.name}" min="0" step="1" value="100" style="width:4em;"></label>
+                        <button type="button" onclick="deleteFileRow('${fileObj.name}')" style="margin-left:1em;">Delete</button>
                     </div>
                 </td>
             `;
@@ -176,7 +182,7 @@
         }
 
         function deleteFileRow(filename) {
-            uploadedFiles = uploadedFiles.filter(f => f !== filename);
+            uploadedFiles = uploadedFiles.filter(f => f.name !== filename);
             const table = document.getElementById('mainTable').getElementsByTagName('tbody')[0];
             const rows = table.querySelectorAll('tr[data-filename]');
             rows.forEach(row => {
@@ -205,24 +211,7 @@
         }
 
         async function uploadFilesToServer() {
-            const files = [];
-            
-            // Collect all uploaded files with their categories and weights
-            uploadedFiles.forEach(filename => {
-                const radioButtons = document.querySelectorAll(`input[name="category_${filename}"]:checked`);
-                const category = radioButtons.length > 0 ? radioButtons[0].value : 'juror';
-                
-                const weightInput = document.getElementById(`weight_${filename}`);
-                const weight = weightInput ? parseInt(weightInput.value) || 100 : 100;
-                
-                files.push({
-                    filename: filename,
-                    category: category,
-                    weight: weight
-                });
-            });
-
-            if (files.length === 0) {
+            if (uploadedFiles.length === 0) {
                 document.getElementById('runStatus').textContent = 'No files to upload';
                 return false;
             }
@@ -230,12 +219,27 @@
             try {
                 document.getElementById('runStatus').textContent = 'Clearing existing files and uploading...';
                 
+                // Create FormData to send actual files
+                const formData = new FormData();
+                
+                // Add files and their metadata
+                uploadedFiles.forEach(fileObj => {
+                    const radioButtons = document.querySelectorAll(`input[name="category_${fileObj.name}"]:checked`);
+                    const category = radioButtons.length > 0 ? radioButtons[0].value : 'juror';
+                    
+                    const weightInput = document.getElementById(`weight_${fileObj.name}`);
+                    const weight = weightInput ? parseInt(weightInput.value) || 100 : 100;
+                    
+                    // Add the actual file
+                    formData.append('files', fileObj.file);
+                    // Add metadata
+                    formData.append('categories', category);
+                    formData.append('weights', weight.toString());
+                });
+
                 const response = await fetch('/upload', {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ files: files })
+                    body: formData
                 });
 
                 const result = await response.json();
@@ -270,30 +274,70 @@
             if (document.getElementById('cb_arguments').checked) evaluationOptions.push('arguments');
 
             try {
-                document.getElementById('runStatus').textContent = 'Starting process...';
+                document.getElementById('runStatus').textContent = 'Starting notebook execution...';
+                document.getElementById('runStatus').style.color = '#007bff';
                 
-                const response = await fetch('/run', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        juror_count: parseInt(jurorCount),
-                        repeat_count: parseInt(repeatCount),
-                        evaluation_options: evaluationOptions
-                    })
-                });
-
-                const result = await response.json();
-                
-                if (result.success) {
-                    console.log('Process started:', result);
-                    document.getElementById('runStatus').textContent = result.message;
-                    document.getElementById('runStatus').style.color = '#28a745';
-                } else {
-                    document.getElementById('runStatus').textContent = `Error: ${result.error}`;
-                    document.getElementById('runStatus').style.color = '#dc3545';
+                // Create output area for streaming results
+                let outputArea = document.getElementById('outputArea');
+                if (!outputArea) {
+                    outputArea = document.createElement('div');
+                    outputArea.id = 'outputArea';
+                    outputArea.style.cssText = `
+                        margin-top: 1em;
+                        padding: 1em;
+                        border: 1px solid #ccc;
+                        background: #f8f9fa;
+                        max-height: 400px;
+                        overflow-y: auto;
+                        white-space: pre-wrap;
+                        font-family: monospace;
+                        font-size: 12px;
+                    `;
+                    document.getElementById('runStatus').parentNode.appendChild(outputArea);
                 }
+                outputArea.innerHTML = '';
+                
+                // Use Server-Sent Events to stream notebook execution
+                const eventSource = new EventSource('/run_notebook?' + new URLSearchParams({
+                    juror_count: parseInt(jurorCount),
+                    repeat_count: parseInt(repeatCount),
+                    evaluation_options: JSON.stringify(evaluationOptions)
+                }));
+                
+                eventSource.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        
+                        if (data.status === 'started') {
+                            document.getElementById('runStatus').textContent = data.message;
+                            outputArea.innerHTML += `[STARTED] ${data.message}\n`;
+                        } else if (data.status === 'output') {
+                            outputArea.innerHTML += data.message + '\n';
+                            outputArea.scrollTop = outputArea.scrollHeight;
+                        } else if (data.status === 'completed') {
+                            document.getElementById('runStatus').textContent = data.message;
+                            document.getElementById('runStatus').style.color = '#28a745';
+                            outputArea.innerHTML += `[COMPLETED] ${data.message}\n`;
+                            eventSource.close();
+                        } else if (data.status === 'error') {
+                            document.getElementById('runStatus').textContent = `Error: ${data.message}`;
+                            document.getElementById('runStatus').style.color = '#dc3545';
+                            outputArea.innerHTML += `[ERROR] ${data.message}\n`;
+                            eventSource.close();
+                        }
+                    } catch (e) {
+                        console.error('Error parsing SSE data:', e);
+                        outputArea.innerHTML += `[ERROR] Failed to parse server response\n`;
+                    }
+                };
+                
+                eventSource.onerror = function(event) {
+                    console.error('SSE error:', event);
+                    document.getElementById('runStatus').textContent = 'Connection error occurred';
+                    document.getElementById('runStatus').style.color = '#dc3545';
+                    eventSource.close();
+                };
+                
             } catch (error) {
                 console.error('Run error:', error);
                 document.getElementById('runStatus').textContent = `Run failed: ${error.message}`;
