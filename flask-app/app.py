@@ -217,10 +217,17 @@ try:
     exec(open('run_notebook_functions.py').read())
     
     print("Starting deliberation...")
+    # Debug: Print the actual paths being passed
+    print(f"DEBUG - About to call run_deliberation with:")
+    print(f"  jury_file='{jury_file_path}'")
+    print(f"  case_file='{case_file_path}'")
+    print(f"  scenario_number=1")
+    print(f"  total_rounds={total_rounds}")
+    
     # Call run_deliberation with uploaded files from temp directories
     run_deliberation(
-        jury_file='{jury_file_path}',
-        case_file='{case_file_path}',
+        jury_file="{jury_file_path}",
+        case_file="{case_file_path}",
         scenario_number=1,
         total_rounds={total_rounds},
         save_to_file=True
