@@ -31,38 +31,25 @@
         <tbody>
             <tr id="generateRow">
                 <td>
-                    <span class="controls" id="btn_0" onclick="togglePlay(0)">▶</span>
-                </td>
-                <td>
                     generate <input type="number" min="1" value="5" style="width:3em;" id="jurorCount"> jurors interactively
                 </td>
             </tr>
             <tr id="uploadRow">
-                <td>
-                    <!-- <span class="controls" id="btn_0" onclick="togglePlay(0)">▶</span> -->
-                </td>
                 <td>
                     <label for="fileInput" id="uploadLabel" style="cursor:pointer; color:blue; text-decoration:underline;">upload</label>
                     <input type="file" id="fileInput" style="display:none;" multiple onchange="handleFiles(event)">
                 </td>
             </tr>
             <tr id="noFilesRow">
-                <td></td>
                 <td style="color: #888;">No files uploaded yet.</td>
             </tr>
             <!-- Filename rows will be inserted here -->
             <tr>
                 <td>
-                    <span class="controls" id="btn_2" onclick="togglePlay(2)">▶</span>
-                </td>
-                <td>
                     repeat <input type="number" min="1" value="10" style="width:3em;" id="repeatCount"> times
                 </td>
             </tr>
             <tr>
-                <td>
-                    <span class="controls" id="btn_3" onclick="togglePlay(3)">▶</span>
-                </td>
                 <td>
                     evaluate 
                     <label><input type="checkbox" id="cb_participation"> participation</label>
@@ -71,9 +58,6 @@
                 </td>
             </tr>
             <tr>
-                <td>
-                    <span class="controls" id="btn_run" onclick="runProcess()">▶</span>
-                </td>
                 <td>
                     <button id="runButton" onclick="runProcess()" style="padding:0.5em 1em; background:#007bff; color:white; border:none; border-radius:4px; cursor:pointer;">Run Process</button>
                     <span id="runStatus" style="margin-left:1em; color:#666;"></span>
@@ -175,7 +159,6 @@
             const row = document.createElement('tr');
             row.setAttribute('data-filename', filename);
             row.innerHTML = `
-                <td></td>
                 <td>
                     <span style="font-weight:bold;">${filename}</span>
                     <div style="margin-left:1em; display:inline-block;">
@@ -217,7 +200,7 @@
             const uploadRow = document.getElementById('uploadRow');
             const row = document.createElement('tr');
             row.id = 'noFilesRow';
-            row.innerHTML = '<td></td><td style="color: #888;">No files uploaded yet.</td>';
+            row.innerHTML = '<td style="color: #888;">No files uploaded yet.</td>';
             table.insertBefore(row, uploadRow.nextSibling);
         }
 
