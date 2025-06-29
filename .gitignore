@@ -7,3 +7,21 @@ api_key
 **/api_key
 flask-app/api_key
 flask-app/backend/api_key
+
+# Docker
+.dockerignore
+
+# Environment variables
+.env
+.env.local
+.env.production
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+temp_*
+deliberation_*.md
+run_notebook_functions.py
+temp_deliberation_script.py

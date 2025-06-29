@@ -1,4 +1,3 @@
-from flask import Flask, render_template, request, jsonify, Response
 import os
 import tempfile
 import shutil
@@ -7,10 +6,35 @@ import subprocess
 import threading
 import queue
 import time
+import logging
 from werkzeug.utils import secure_filename
+from flask import Flask, render_template, request, jsonify, Response
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('logs/app.log') if os.path.exists('logs') else logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
+
+# Production-safe configuration
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-key-change-in-production')
+
+# Environment configuration
+PORT = int(os.environ.get('PORT', 8080))  # Cloud Run sets PORT automatically
+HOST = os.environ.get('HOST', '0.0.0.0')
+DEBUG = os.environ.get('FLASK_ENV') == 'development'
 
 # Create temporary directory for uploads
 TEMP_DIR = tempfile.mkdtemp(prefix="jury_uploads_")
@@ -22,28 +46,58 @@ os.makedirs(JUROR_DIR, exist_ok=True)
 os.makedirs(CASE_DIR, exist_ok=True)
 
 print(f"Upload directory: {TEMP_DIR}")
+logger.info(f"Upload directory: {TEMP_DIR}")
 
 @app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html")
+    """Main page"""
+    try:
+        return render_template("index.html")
+    except Exception as e:
+        logger.error(f"Error serving index page: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route("/health", methods=["GET"])
+def health_check():
+    """Health check endpoint for container orchestration"""
+    try:
+        return jsonify({
+            'status': 'healthy',
+            'timestamp': time.time(),
+            'version': '1.0.0'
+        }), 200
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
 
 @app.route("/upload", methods=["POST"])
 def upload_files():
     try:
         # Check if the request contains files
         if 'files' not in request.files:
+            logger.warning("Upload attempt with no files")
             return jsonify({'error': 'No files provided'}), 400
         
         files = request.files.getlist('files')
         if not files or all(f.filename == '' for f in files):
+            logger.warning("Upload attempt with empty files")
             return jsonify({'error': 'No files selected'}), 400
+        
+        # Validate file types for security
+        allowed_extensions = {'.yaml', '.yml', '.txt'}
+        for file in files:
+            if file.filename:
+                ext = os.path.splitext(file.filename)[1].lower()
+                if ext not in allowed_extensions:
+                    logger.warning(f"Rejected file with invalid extension: {file.filename}")
+                    return jsonify({'error': f'Invalid file type: {ext}. Only .yaml, .yml, and .txt files are allowed.'}), 400
         
         # Get additional data about categories and weights
         categories = request.form.getlist('categories')
         weights = request.form.getlist('weights')
         
         # Clear existing files first
-        print("Clearing existing files...")
+        logger.info("Clearing existing files...")
         
         # Clear juror directory
         if os.path.exists(JUROR_DIR):
@@ -51,7 +105,7 @@ def upload_files():
                 filepath = os.path.join(JUROR_DIR, filename)
                 if os.path.isfile(filepath):
                     os.remove(filepath)
-                    print(f"Deleted: {filepath}")
+                    logger.info(f"Deleted: {filepath}")
         
         # Clear case directory
         if os.path.exists(CASE_DIR):
@@ -59,9 +113,9 @@ def upload_files():
                 filepath = os.path.join(CASE_DIR, filename)
                 if os.path.isfile(filepath):
                     os.remove(filepath)
-                    print(f"Deleted: {filepath}")
+                    logger.info(f"Deleted: {filepath}")
         
-        print("All existing files cleared.")
+        logger.info("All existing files cleared.")
         
         results = []
         
@@ -78,7 +132,7 @@ def upload_files():
                 filepath = os.path.join(target_dir, filename)
                 file.save(filepath)
                 
-                print(f"Uploaded: {filepath} (category: {category}, weight: {weight})")
+                logger.info(f"Uploaded: {filepath} (category: {category}, weight: {weight})")
                 
                 results.append({
                     'filename': filename,
@@ -96,8 +150,8 @@ def upload_files():
         })
         
     except Exception as e:
-        print(f"Upload error: {str(e)}")
-        return jsonify({'error': str(e)}), 500
+        logger.error(f"Upload error: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
 
 @app.route("/run", methods=["POST"])
 def run_process():
@@ -320,10 +374,58 @@ except Exception as e:
             yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
         return Response(error_gen(), mimetype='text/event-stream')
 
+@app.route('/test-env')
+def test_env():
+    """Test endpoint to check environment variables"""
+    import os
+    env_info = {
+        'google_api_key_available': bool(os.environ.get('GOOGLE_API_KEY')),
+        'google_api_key_length': len(os.environ.get('GOOGLE_API_KEY', '')),
+        'port': os.environ.get('PORT', 'Not set'),
+        'deployment_version': os.environ.get('DEPLOYMENT_VERSION', 'Not set'),
+        'working_directory': os.getcwd(),
+        'python_path': os.environ.get('PYTHONPATH', 'Not set')
+    }
+    return jsonify(env_info)
+
+# Initialize API key file from environment variable if available
+def initialize_api_key():
+    """Create API key file from environment variable if available"""
+    api_key = os.environ.get('GOOGLE_API_KEY')
+    if api_key:
+        # Create api_key file in backend directory where notebook expects it
+        backend_dir = os.path.join(os.path.dirname(__file__), 'backend')
+        os.makedirs(backend_dir, exist_ok=True)
+        api_key_path = os.path.join(backend_dir, 'api_key')
+        
+        try:
+            with open(api_key_path, 'w') as f:
+                f.write(api_key.strip())
+            logger.info(f"API key file created at: {api_key_path}")
+        except Exception as e:
+            logger.error(f"Failed to create API key file: {e}")
+    else:
+        logger.warning("No GOOGLE_API_KEY environment variable found")
+
+# Initialize API key on startup
+initialize_api_key()
+
 if __name__ == "__main__":
     try:
-        app.run(debug=True, port=5001, host="127.0.0.1")
+        # Use production-safe server settings
+        if DEBUG:
+            app.run(debug=True, port=PORT, host=HOST)
+        else:
+            # In production, use a proper WSGI server
+            from waitress import serve
+            logger.info(f"Starting production server on {HOST}:{PORT}")
+            serve(app, host=HOST, port=PORT)
+    except ImportError:
+        # Fallback if waitress is not available
+        logger.warning("Waitress not available, using Flask dev server")
+        app.run(debug=False, port=PORT, host=HOST)
     finally:
         # Cleanup temp directory on exit
         if os.path.exists(TEMP_DIR):
             shutil.rmtree(TEMP_DIR)
+            logger.info("Cleaned up temporary directory")

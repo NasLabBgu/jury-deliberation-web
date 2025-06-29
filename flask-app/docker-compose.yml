@@ -1,0 +1,21 @@
+version: '3.8'
+
+services:
+  jury-deliberation-app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - FLASK_ENV=production
+      - SECRET_KEY=your-secret-key-change-this
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+    volumes:
+      # Mount API key file if it exists
+      - ./api_key:/app/api_key:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
