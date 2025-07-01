@@ -64,8 +64,7 @@ jobs:
             --concurrency 80 \
             --max-instances 10 \
             --timeout 3600 \
-            --set-env-vars FLASK_ENV=production \
-            --update-secrets GOOGLE_API_KEY=google-api-key:latest
+            --set-env-vars FLASK_ENV=production
       
       - name: Set IAM policy for public access
         run: |
