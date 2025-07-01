@@ -31,6 +31,16 @@
             width: 80px;
         }
         
+        /* Initially hide weight fields */
+        .weight-label {
+            display: none;
+        }
+        
+        /* Add spacing between form elements */
+        .file-row-controls label {
+            margin-right: 0.5rem;
+        }
+        
         /* Remove Pico CSS background and color overrides */
         article {
             background: none !important;
@@ -64,7 +74,11 @@
             </tr>
             <tr id="repeatRow" style="display: none;">
                 <td>
-                    repeat <input type="number" min="1" value="10" style="width:3em;" id="repeatCount"> times
+                    repeat <input type="number" min="1" value="10" style="width:3em; margin-left: 0.5rem; margin-right: 0.5rem;" id="repeatCount"> times
+                    <span style="margin-left: 1rem;">
+                        <label><input type="radio" name="repeatMode" value="individual" checked onchange="updateWeightVisibility()"> each juror-case combination</label>
+                        <label style="margin-left: 0.5rem;"><input type="radio" name="repeatMode" value="overall" onchange="updateWeightVisibility()"> overall</label>
+                    </span>
                 </td>
             </tr>
             <tr id="evaluateRow" style="display: none;">
@@ -163,6 +177,22 @@
             if (repeatRow) repeatRow.style.display = hasFiles ? '' : 'none';
             if (evaluateRow) evaluateRow.style.display = hasFiles ? '' : 'none';
             if (runRow) runRow.style.display = hasFiles ? '' : 'none';
+            
+            // Update weight visibility when rows become visible
+            if (hasFiles) {
+                updateWeightVisibility();
+            }
+        }
+
+        function updateWeightVisibility() {
+            const repeatModeRadio = document.querySelector('input[name="repeatMode"]:checked');
+            const showWeights = repeatModeRadio && repeatModeRadio.value === 'overall';
+            
+            // Show/hide all weight fields
+            const weightLabels = document.querySelectorAll('.weight-label');
+            weightLabels.forEach(label => {
+                label.style.display = showWeights ? 'inline' : 'none';
+            });
         }
 
         function copyOutputToClipboard() {
@@ -314,9 +344,9 @@
                     <div class="file-row-container">
                         <span style="font-weight:bold;">${fileObj.name}</span>
                         <div class="file-row-controls">
+                            <label class="weight-label">weight: <input type="number" id="weight_${fileObj.name}" min="0" step="1" value="100"></label>
                             <label><input type="radio" name="category_${fileObj.name}" value="juror" ${jurorChecked}> juror</label>
                             <label><input type="radio" name="category_${fileObj.name}" value="case" ${caseChecked}> case</label>
-                            <label>weight: <input type="number" id="weight_${fileObj.name}" min="0" step="1" value="100"></label>
                             <button type="button" style="color: white" onclick="deleteFileRow('${fileObj.name}')">Delete</button>
                         </div>
                     </div>
@@ -412,6 +442,8 @@
 
             // Get form values
             const repeatCount = document.getElementById('repeatCount').value;
+            const repeatModeRadio = document.querySelector('input[name="repeatMode"]:checked');
+            const repeatMode = repeatModeRadio ? repeatModeRadio.value : 'individual';
             
             const evaluationOptions = [];
             if (document.getElementById('cb_participation').checked) evaluationOptions.push('participation');
@@ -455,6 +487,7 @@
                 // Use Server-Sent Events to stream notebook execution
                 const eventSource = new EventSource('/run_notebook?' + new URLSearchParams({
                     repeat_count: parseInt(repeatCount),
+                    repeat_mode: repeatMode,
                     evaluation_options: JSON.stringify(evaluationOptions)
                 }));
                 
