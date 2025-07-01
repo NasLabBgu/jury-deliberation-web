@@ -40,9 +40,9 @@ jobs:
       
       - name: Build Docker image with Cloud Build
         run: |
-          gcloud builds submit --tag ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}/${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} \
-            --dockerfile ./ci/Dockerfile \
-            ./flask-app
+          cd flask-app
+          cp ../ci/Dockerfile .
+          gcloud builds submit --tag ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}/${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }}
       
       - name: Deploy to Cloud Run
         run: |
