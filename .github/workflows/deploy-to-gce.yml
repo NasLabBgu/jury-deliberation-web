@@ -41,12 +41,31 @@ jobs:
       - name: Build Docker image with Cloud Build
         run: |
           echo "Starting Cloud Build..."
-          gcloud builds submit . --config ci/cloudbuild.yaml --substitutions=_IMAGE_URL=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/jury-deliberation-app/${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} --async
-          echo "✅ Build submitted successfully!"
+          BUILD_OUTPUT=$(gcloud builds submit . --config ci/cloudbuild.yaml --substitutions=_IMAGE_URL=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/jury-deliberation-app/${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} --async)
+          BUILD_ID=$(echo "$BUILD_OUTPUT" | grep -o 'builds/[a-f0-9-]*' | cut -d'/' -f2)
+          echo "✅ Build submitted successfully! Build ID: $BUILD_ID"
           
-          # Wait a bit for the build to potentially complete
-          echo "Waiting 2 minutes for build to complete..."
-          sleep 120
+          # Wait for build to complete
+          echo "Waiting for build to complete..."
+          for i in {1..20}; do
+            BUILD_STATUS=$(gcloud builds describe $BUILD_ID --format="get(status)" 2>/dev/null || echo "UNKNOWN")
+            echo "Build status: $BUILD_STATUS (attempt $i/20)"
+            
+            if [ "$BUILD_STATUS" = "SUCCESS" ]; then
+              echo "✅ Build completed successfully!"
+              break
+            elif [ "$BUILD_STATUS" = "FAILURE" ] || [ "$BUILD_STATUS" = "CANCELLED" ] || [ "$BUILD_STATUS" = "TIMEOUT" ]; then
+              echo "❌ Build failed with status: $BUILD_STATUS"
+              exit 1
+            fi
+            
+            sleep 30
+          done
+          
+          if [ "$BUILD_STATUS" != "SUCCESS" ]; then
+            echo "❌ Build did not complete within timeout period"
+            exit 1
+          fi
       
       - name: Deploy to Cloud Run
         run: |

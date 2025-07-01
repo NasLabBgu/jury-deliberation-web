@@ -43,4 +43,4 @@ HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
 # Run the application with Gunicorn with more startup time
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--timeout", "300", "--worker-connections", "1000", "--preload", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info", "app:app"]
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--timeout", "300", "--graceful-timeout", "300", "--keep-alive", "2", "--max-requests", "1000", "--preload", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "debug", "--capture-output", "app:app"]

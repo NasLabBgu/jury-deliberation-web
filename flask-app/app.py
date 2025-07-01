@@ -15,17 +15,29 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configure logging
+try:
+    os.makedirs('logs', exist_ok=True)
+    log_handler = logging.FileHandler('logs/app.log')
+except:
+    log_handler = logging.StreamHandler()
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Changed to DEBUG for more verbose logging
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(),
-        logging.FileHandler('logs/app.log') if os.path.exists('logs') else logging.StreamHandler()
+        log_handler
     ]
 )
 logger = logging.getLogger(__name__)
 
+# Add early startup logging
+logger.info("Starting Flask application initialization...")
+logger.info(f"Python path: {os.getcwd()}")
+logger.info(f"Environment variables: PORT={os.environ.get('PORT')}, HOST={os.environ.get('HOST')}")
+
 app = Flask(__name__)
+logger.info("Flask app instance created successfully")
 
 # Production-safe configuration
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
@@ -60,15 +72,7 @@ def index():
 @app.route("/health", methods=["GET"])
 def health_check():
     """Health check endpoint for container orchestration"""
-    try:
-        return jsonify({
-            'status': 'healthy',
-            'timestamp': time.time(),
-            'version': '1.0.0'
-        }), 200
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        return jsonify({'status': 'unhealthy', 'error': str(e)}), 500
+    return "OK", 200
 
 @app.route("/upload", methods=["POST"])
 def upload_files():
@@ -420,6 +424,9 @@ def create_app():
     """Application factory for WSGI servers"""
     logger.info("App factory called - returning Flask app instance")
     return app
+
+# Make the app available for WSGI servers
+application = app
 
 if __name__ == "__main__":
     try:
