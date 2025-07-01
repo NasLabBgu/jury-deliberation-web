@@ -44,8 +44,15 @@ jobs:
           echo "Starting Cloud Build..."
           gcloud builds submit . --config ci/cloudbuild.yaml --substitutions=_IMAGE_URL=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/jury-deliberation-app/${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} --async > build_output.txt
           
-          # Extract build ID from output
-          BUILD_ID=$(grep -o 'builds/[^]]*' build_output.txt | cut -d'/' -f2)
+          # Extract build ID from output using multiple methods
+          BUILD_ID=$(grep -o 'builds/[a-f0-9-]*' build_output.txt | cut -d'/' -f2)
+          
+          # Fallback: try to get it from the gcloud list command
+          if [ -z "$BUILD_ID" ]; then
+            echo "First method failed, trying gcloud builds list..."
+            BUILD_ID=$(gcloud builds list --limit=1 --format="get(id)")
+          fi
+          
           echo "Build ID: $BUILD_ID"
           cat build_output.txt
           
