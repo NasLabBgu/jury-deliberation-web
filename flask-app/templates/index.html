@@ -74,7 +74,7 @@
             </tr>
             <tr id="repeatRow" style="display: none;">
                 <td>
-                    repeat <input type="number" min="1" value="10" style="width:3em; margin-left: 0.5rem; margin-right: 0.5rem;" id="repeatCount"> times
+                    repeat <input type="number" min="1" value="10" style="width:3em; margin-left: 0.5rem; margin-right: 0.5rem;" id="repeatCount" oninput="updateTimesText()"> <span id="timesText">times</span>
                     <span style="margin-left: 1rem;">
                         <label><input type="radio" name="repeatMode" value="individual" checked onchange="updateWeightVisibility()"> each juror-case combination</label>
                         <label style="margin-left: 0.5rem;"><input type="radio" name="repeatMode" value="overall" onchange="updateWeightVisibility()"> overall</label>
@@ -193,6 +193,16 @@
             weightLabels.forEach(label => {
                 label.style.display = showWeights ? 'inline' : 'none';
             });
+        }
+
+        function updateTimesText() {
+            const repeatCount = document.getElementById('repeatCount');
+            const timesText = document.getElementById('timesText');
+            
+            if (repeatCount && timesText) {
+                const count = parseInt(repeatCount.value) || 0;
+                timesText.textContent = count === 1 ? 'time' : 'times';
+            }
         }
 
         function copyOutputToClipboard() {
