@@ -1,0 +1,15 @@
+steps:
+- name: 'gcr.io/cloud-builders/docker'
+  args: 
+  - 'build'
+  - '-f'
+  - 'ci/Dockerfile'
+  - '-t'
+  - '${_IMAGE_URL}'
+  - '.'
+  
+images:
+- '${_IMAGE_URL}'
+
+substitutions:
+  _IMAGE_URL: 'me-west1-docker.pkg.dev/${PROJECT_ID}/jury-deliberation-app/jury-deliberation-app:${SHORT_SHA}'

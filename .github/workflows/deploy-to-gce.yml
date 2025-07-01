@@ -40,7 +40,7 @@ jobs:
       
       - name: Build Docker image with Cloud Build
         run: |
-          gcloud builds submit ci/ --tag ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/jury-deliberation-app/${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }}
+          gcloud builds submit . --config ci/cloudbuild.yaml --substitutions=_IMAGE_URL=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/jury-deliberation-app/${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }}
       
       - name: Deploy to Cloud Run
         run: |

@@ -20,12 +20,12 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install Python dependencies
-COPY requirements-prod.txt .
+COPY flask-app/requirements-prod.txt .
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements-prod.txt
 
 # Copy application code
-COPY . .
+COPY flask-app/ .
 
 # Create non-root user for security
 RUN adduser --disabled-password --gecos '' appuser && \
