@@ -76,6 +76,10 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:$SERVICE_ACCOUNT_NAME@$PROJECT_ID.iam.gserviceaccount.com" \
     --role="roles/storage.admin"
 
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:$SERVICE_ACCOUNT_NAME@$PROJECT_ID.iam.gserviceaccount.com" \
+    --role="roles/iam.serviceAccountUser"
+
 # Create Workload Identity Pool
 echo "🆔 Creating Workload Identity Pool..."
 if ! gcloud iam workload-identity-pools describe $WORKLOAD_IDENTITY_POOL --location="global" >/dev/null 2>&1; then
