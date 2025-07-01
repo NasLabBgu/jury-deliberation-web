@@ -41,22 +41,35 @@ jobs:
       - name: Build Docker image with Cloud Build
         run: |
           echo "Starting Cloud Build..."
-          BUILD_ID=$(gcloud builds submit . --config ci/cloudbuild.yaml --substitutions=_IMAGE_URL=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/jury-deliberation-app/${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} --format="value(id)")
+          BUILD_ID=$(gcloud builds submit . --config ci/cloudbuild.yaml --substitutions=_IMAGE_URL=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/jury-deliberation-app/${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} --async --format="value(id)")
           echo "Build ID: $BUILD_ID"
           
-          echo "Waiting for build to complete..."
-          gcloud builds log $BUILD_ID --stream
+          echo "Waiting for build to complete (checking every 30 seconds)..."
+          for i in {1..20}; do
+            BUILD_STATUS=$(gcloud builds describe $BUILD_ID --format="value(status)" 2>/dev/null || echo "UNKNOWN")
+            echo "Build status: $BUILD_STATUS (attempt $i/20)"
+            
+            if [ "$BUILD_STATUS" = "SUCCESS" ]; then
+              echo "✅ Build completed successfully!"
+              break
+            elif [ "$BUILD_STATUS" = "FAILURE" ] || [ "$BUILD_STATUS" = "CANCELLED" ] || [ "$BUILD_STATUS" = "TIMEOUT" ]; then
+              echo "❌ Build failed with status: $BUILD_STATUS"
+              echo "Build logs: https://console.cloud.google.com/cloud-build/builds/$BUILD_ID?project=${{ env.PROJECT_ID }}"
+              exit 1
+            elif [ "$BUILD_STATUS" = "UNKNOWN" ]; then
+              echo "⚠️  Could not get build status, continuing..."
+            fi
+            
+            sleep 30
+          done
           
-          # Check build status
-          BUILD_STATUS=$(gcloud builds describe $BUILD_ID --format="value(status)")
-          echo "Build status: $BUILD_STATUS"
-          
+          # Final status check
+          BUILD_STATUS=$(gcloud builds describe $BUILD_ID --format="value(status)" 2>/dev/null || echo "UNKNOWN")
           if [ "$BUILD_STATUS" != "SUCCESS" ]; then
-            echo "❌ Build failed with status: $BUILD_STATUS"
+            echo "❌ Build did not complete successfully. Final status: $BUILD_STATUS"
+            echo "Build logs: https://console.cloud.google.com/cloud-build/builds/$BUILD_ID?project=${{ env.PROJECT_ID }}"
             exit 1
           fi
-          
-          echo "✅ Build completed successfully!"
       
       - name: Deploy to Cloud Run
         run: |
