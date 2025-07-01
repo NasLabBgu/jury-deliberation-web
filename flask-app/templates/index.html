@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>Interactive Table</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
     <style>
         table {
             width: 85%;
@@ -105,13 +106,62 @@
                 <h3>Generate Jurors</h3>
                 <!-- <button aria-label="Close" rel="prev" onclick="closeGenerateModal()"></button> -->
             </header>
-            <main>
-                <p>How many jurors would you like to generate?</p>
-                <input type="number" id="modalJurorCount" min="1" max="20" value="5">
+            <main id="modalContent">
+                <div id="inputSection">
+                    <p>How many jurors would you like to generate?</p>
+                    <input type="number" id="modalJurorCount" min="1" max="20" value="5">
+                    <div style="margin-top: 1rem; padding: 0.5rem; background: #f5f5f5; border-radius: 4px; font-size: 0.9em;">
+                        <strong>Note:</strong> The generation process is interactive and will prompt you for:
+                        <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
+                            <li>Name confirmation (Accept/New/Enter custom)</li>
+                            <li>Religion confirmation</li>
+                            <li>Race/ethnicity biases (optional)</li>
+                            <li>Role description (required)</li>
+                            <li>Goal for the juror (optional)</li>
+                        </ul>
+                        You'll be able to type responses in the terminal below.
+                    </div>
+                </div>
+                <div id="terminalSection" style="display: none;">
+                    <div id="terminalOutput" style="
+                        background: #000;
+                        color: #00ff00;
+                        font-family: monospace;
+                        padding: 1rem;
+                        height: 280px;
+                        overflow-y: auto;
+                        border-radius: 4px;
+                        white-space: pre-wrap;
+                        font-size: 14px;
+                    "></div>
+                    <div style="display: flex; margin-top: 0.5rem;">
+                        <input type="text" id="terminalInput" placeholder="Type your response here..." style="
+                            flex: 1;
+                            background: #333;
+                            color: #fff;
+                            border: 1px solid #555;
+                            padding: 0.5rem;
+                            font-family: monospace;
+                            border-radius: 4px;
+                        ">
+                        <button onclick="sendTerminalInput()" style="
+                            margin-left: 0.5rem;
+                            background: #00ff00;
+                            color: #000;
+                            border: none;
+                            padding: 0.5rem 1rem;
+                            border-radius: 4px;
+                            cursor: pointer;
+                        ">Send</button>
+                    </div>
+                    <div style="margin-top: 0.5rem; font-size: 0.8em; color: #666;">
+                        Common responses: <kbd>A</kbd> (Accept), <kbd>n</kbd> (New suggestion), <kbd>e</kbd> (Enter custom), <kbd>y</kbd>/<kbd>N</kbd> (Yes/No)
+                    </div>
+                </div>
             </main>
-            <footer>
+            <footer id="modalFooter">
                 <button role="button" class="secondary" onclick="closeGenerateModal()">Cancel</button>
-                <button role="button" onclick="generateJurors()">Generate</button>
+                <button role="button" id="generateConfirmButton" onclick="confirmGenerateJurors()">Generate</button>
             </footer>
         </article>
     </dialog>
@@ -275,17 +325,219 @@
             const modal = document.getElementById('generateModal');
             if (modal) {
                 modal.close();
+                // Reset modal to initial state
+                resetGenerateModal();
             }
         }
 
-        function generateJurors() {
+        function resetGenerateModal() {
+            const inputSection = document.getElementById('inputSection');
+            const terminalSection = document.getElementById('terminalSection');
+            const modalFooter = document.getElementById('modalFooter');
+            const terminalOutput = document.getElementById('terminalOutput');
+            const terminalInput = document.getElementById('terminalInput');
+            const sendButton = terminalInput?.nextElementSibling;
+            
+            if (inputSection) inputSection.style.display = 'block';
+            if (terminalSection) terminalSection.style.display = 'none';
+            if (terminalOutput) terminalOutput.textContent = '';
+            
+            // Reset terminal input state
+            if (terminalInput) {
+                terminalInput.style.display = 'block';
+                terminalInput.disabled = false;
+                terminalInput.value = '';
+            }
+            if (sendButton) {
+                sendButton.style.display = 'block';
+            }
+            
+            // Reset footer buttons
+            if (modalFooter) {
+                modalFooter.innerHTML = `
+                    <button role="button" class="secondary" onclick="closeGenerateModal()">Cancel</button>
+                    <button role="button" id="generateConfirmButton" onclick="confirmGenerateJurors()">Generate</button>
+                `;
+            }
+            
+            // Disconnect socket if connected
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+        }
+
+        function confirmGenerateJurors() {
             const jurorCount = document.getElementById('modalJurorCount').value;
-            console.log(`Generate ${jurorCount} jurors - functionality not implemented yet`);
             
-            // TODO: Implement juror generation functionality here
-            alert(`Generating ${jurorCount} jurors - functionality coming soon!`);
+            // Switch to terminal view
+            const inputSection = document.getElementById('inputSection');
+            const terminalSection = document.getElementById('terminalSection');
+            const modalFooter = document.getElementById('modalFooter');
             
-            closeGenerateModal();
+            if (inputSection) inputSection.style.display = 'none';
+            if (terminalSection) {
+                terminalSection.style.display = 'block';
+                // Focus the terminal input field
+                setTimeout(() => {
+                    const terminalInput = document.getElementById('terminalInput');
+                    if (terminalInput) terminalInput.focus();
+                }, 100);
+            }
+            
+            // Update footer to show only close button
+            if (modalFooter) {
+                modalFooter.innerHTML = `
+                    <button role="button" class="secondary" onclick="closeGenerateModal()">Cancel Generation</button>
+                `;
+            }
+            
+            // Start the generation process
+            generateJurors(jurorCount);
+        }
+
+        // WebSocket connection for interactive terminal
+        let socket = null;
+        
+        function initializeSocket() {
+            if (!socket) {
+                socket = io();
+                
+                socket.on('terminal_output', function(data) {
+                    const terminalOutput = document.getElementById('terminalOutput');
+                    if (terminalOutput) {
+                        terminalOutput.textContent += data.data;
+                        terminalOutput.scrollTop = terminalOutput.scrollHeight;
+                    }
+                });
+                
+                socket.on('generation_completed', function(data) {
+                    const terminalOutput = document.getElementById('terminalOutput');
+                    if (terminalOutput) {
+                        terminalOutput.textContent += `\n\n═══════════════════════════════════════\n`;
+                        terminalOutput.textContent += `✓ GENERATION COMPLETED SUCCESSFULLY!\n`;
+                        terminalOutput.textContent += `Generated ${data.count} jurors\n`;
+                        if (data.filename) {
+                            terminalOutput.textContent += `Saved as: ${data.filename}\n`;
+                        }
+                        terminalOutput.textContent += `═══════════════════════════════════════\n`;
+                        terminalOutput.scrollTop = terminalOutput.scrollHeight;
+                    }
+                    
+                    if (data.filename) {
+                        addGeneratedFileToList(data.filename);
+                    }
+                    
+                    // Hide terminal input since generation is complete
+                    const terminalInput = document.getElementById('terminalInput');
+                    const sendButton = terminalInput?.nextElementSibling;
+                    if (terminalInput) {
+                        terminalInput.style.display = 'none';
+                        terminalInput.disabled = true;
+                    }
+                    if (sendButton) {
+                        sendButton.style.display = 'none';
+                    }
+                    
+                    // Update footer to show close button
+                    const modalFooter = document.getElementById('modalFooter');
+                    if (modalFooter) {
+                        modalFooter.innerHTML = `
+                            <button role="button" onclick="closeGenerateModal()">Close</button>
+                        `;
+                    }
+                });
+                
+                socket.on('connect', function() {
+                    console.log('Connected to server');
+                    const terminalOutput = document.getElementById('terminalOutput');
+                    if (terminalOutput && terminalOutput.textContent.includes('Connecting to interactive terminal')) {
+                        terminalOutput.textContent += `Connected! Starting generation...\n`;
+                    }
+                });
+                
+                socket.on('disconnect', function() {
+                    console.log('Disconnected from server');
+                    const terminalOutput = document.getElementById('terminalOutput');
+                    if (terminalOutput) {
+                        terminalOutput.textContent += `\n[CONNECTION LOST] Socket disconnected\n`;
+                    }
+                });
+                
+                socket.on('connect_error', function(error) {
+                    console.error('Connection error:', error);
+                    const terminalOutput = document.getElementById('terminalOutput');
+                    if (terminalOutput) {
+                        terminalOutput.textContent += `\n[ERROR] Connection failed: ${error}\n`;
+                    }
+                });
+            }
+        }
+
+        function generateJurors(jurorCount) {
+            const terminalOutput = document.getElementById('terminalOutput');
+            if (!terminalOutput) return;
+            
+            // Initialize socket connection
+            initializeSocket();
+            
+            terminalOutput.textContent = `Connecting to interactive terminal...\n`;
+            
+            // Start the interactive generation process
+            socket.emit('start_interactive_generation', {
+                count: parseInt(jurorCount)
+            });
+        }
+        
+        function sendTerminalInput() {
+            const terminalInput = document.getElementById('terminalInput');
+            if (!terminalInput || !socket) return;
+            
+            const input = terminalInput.value;
+            if (input.trim()) {
+                // Send input to server
+                socket.emit('terminal_input', {
+                    input: input + '\n'  // Add newline
+                });
+                
+                // Clear input field
+                terminalInput.value = '';
+            }
+        }
+        
+        // Allow sending input with Enter key
+        document.addEventListener('DOMContentLoaded', function() {
+            const terminalInput = document.getElementById('terminalInput');
+            if (terminalInput) {
+                terminalInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        sendTerminalInput();
+                    }
+                });
+            }
+        });
+
+        function addGeneratedFileToList(filename) {
+            // Create a file object representation for the generated file
+            const fileObj = {
+                file: null, // No actual File object for generated files
+                name: filename,
+                generated: true
+            };
+            
+            // Remove "no files" row if present
+            removeNoFilesRow();
+            
+            // Add to uploaded files list
+            uploadedFiles.push(fileObj);
+            
+            // Add file row (will default to "juror" since it's a .yaml file)
+            addFileRow(fileObj);
+            
+            // Update row visibility
+            updateRowVisibility();
+            
+            console.log(`Generated file ${filename} added to file list`);
         }
 
         // Close modal when clicking outside of it (backdrop click)
@@ -418,26 +670,34 @@
                     const weightInput = document.getElementById(`weight_${fileObj.name}`);
                     const weight = weightInput ? parseInt(weightInput.value) || 100 : 100;
                     
-                    // Add the actual file
-                    formData.append('files', fileObj.file);
-                    // Add metadata
-                    formData.append('categories', category);
-                    formData.append('weights', weight.toString());
+                    // Only add actual file objects (skip generated files that are already on server)
+                    if (fileObj.file && !fileObj.generated) {
+                        formData.append('files', fileObj.file);
+                        formData.append('categories', category);
+                        formData.append('weights', weight.toString());
+                    }
                 });
 
-                const response = await fetch('/upload', {
-                    method: 'POST',
-                    body: formData
-                });
+                // If we have any files to upload, send them
+                if (formData.has('files')) {
+                    const response = await fetch('/upload', {
+                        method: 'POST',
+                        body: formData
+                    });
 
-                const result = await response.json();
-                
-                if (result.success) {
-                    console.log('Files uploaded successfully:', result);
-                    return true;
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        console.log('Files uploaded successfully:', result);
+                        return true;
+                    } else {
+                        console.error('Upload error:', result.error);
+                        return false;
+                    }
                 } else {
-                    console.error('Upload error:', result.error);
-                    return false;
+                    // No new files to upload, but we have generated files already on server
+                    console.log('No new files to upload, using existing generated files');
+                    return true;
                 }
             } catch (error) {
                 console.error('Upload error:', error);
