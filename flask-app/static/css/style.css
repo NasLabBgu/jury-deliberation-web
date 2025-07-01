@@ -2582,3 +2582,29 @@ input[type="number"] {
     align-items: center;
     gap: 0.25rem;
 }
+
+/* Custom fixes for better UI experience */
+input[type="number"] {
+    min-width: 80px !important;
+}
+
+/* Ensure proper cursor behavior */
+button, input[type="submit"], .button {
+    cursor: pointer !important;
+}
+
+/* Fix any potential background color issues */
+body, main {
+    background: var(--pico-background-color, #fff);
+}
+
+/* Ensure text is visible on all backgrounds */
+* {
+    color: var(--pico-color, #374151);
+}
+
+/* Fix focus states */
+input:focus, textarea:focus, select:focus, button:focus {
+    outline: 2px solid var(--pico-primary, #1976d2);
+    outline-offset: 2px;
+}
