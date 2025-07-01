@@ -302,6 +302,11 @@
                 return;
             }
             
+            // Check if file has .txt extension to determine default radio selection
+            const isTxtFile = fileObj.name.toLowerCase().endsWith('.txt');
+            const jurorChecked = isTxtFile ? '' : 'checked';
+            const caseChecked = isTxtFile ? 'checked' : '';
+            
             const row = document.createElement('tr');
             row.setAttribute('data-filename', fileObj.name);
             row.innerHTML = `
@@ -309,8 +314,8 @@
                     <div class="file-row-container">
                         <span style="font-weight:bold;">${fileObj.name}</span>
                         <div class="file-row-controls">
-                            <label><input type="radio" name="category_${fileObj.name}" value="juror" checked> juror</label>
-                            <label><input type="radio" name="category_${fileObj.name}" value="case"> case</label>
+                            <label><input type="radio" name="category_${fileObj.name}" value="juror" ${jurorChecked}> juror</label>
+                            <label><input type="radio" name="category_${fileObj.name}" value="case" ${caseChecked}> case</label>
                             <label>weight: <input type="number" id="weight_${fileObj.name}" min="0" step="1" value="100"></label>
                             <button type="button" style="color: white" onclick="deleteFileRow('${fileObj.name}')">Delete</button>
                         </div>
