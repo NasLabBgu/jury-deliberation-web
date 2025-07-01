@@ -25,16 +25,32 @@
         .dropdown {
             margin: 0 2px;
         }
+        
+        /* Number input width fix */
+        input[type="number"] {
+            width: 80px;
+        }
+        
+        /* Remove Pico CSS background and color overrides */
+        article {
+            background: none !important;
+        }
+        
+        article > footer,
+        article > header {
+            background-color: transparent !important;
+        }
+        
+        body,
+        main {
+            background: transparent !important;
+        }
+       
     </style>
 </head>
 <body>
     <table id="mainTable">
         <tbody>
-            <tr id="generateRow">
-                <td>
-                    generate <input type="number" min="1" value="5" style="width:3em;" id="jurorCount"> jurors interactively
-                </td>
-            </tr>
             <tr id="noFilesRow">
                 <td style="color: #888;">No files yet.</td>
             </tr>
@@ -42,6 +58,7 @@
             <tr id="uploadRow">
                 <td>
                     <button type="button" style="color: white" id="uploadButton">Upload</button>
+                    <button type="button" style="color: white; margin-left: 1rem;" id="generateButton" onclick="showGenerateModal()">Generate</button>
                     <input type="file" id="fileInput" style="display:none;" multiple onchange="handleFiles(event)">
                 </td>
             </tr>
@@ -66,6 +83,24 @@
             </tr>
         </tbody>
     </table>
+
+    <!-- Generate Jurors Modal -->
+    <dialog id="generateModal">
+        <article>
+            <header>
+                <h3>Generate Jurors</h3>
+                <!-- <button aria-label="Close" rel="prev" onclick="closeGenerateModal()"></button> -->
+            </header>
+            <main>
+                <p>How many jurors would you like to generate?</p>
+                <input type="number" id="modalJurorCount" min="1" max="20" value="5">
+            </main>
+            <footer>
+                <button role="button" class="secondary" onclick="closeGenerateModal()">Cancel</button>
+                <button role="button" onclick="generateJurors()">Generate</button>
+            </footer>
+        </article>
+    </dialog>
 
     <script>
         const state = {};
@@ -182,6 +217,45 @@
                 alert('No output to copy');
             }
         }
+
+        function showGenerateModal() {
+            const modal = document.getElementById('generateModal');
+            if (modal) {
+                modal.showModal();
+                // Focus on the input field
+                const input = document.getElementById('modalJurorCount');
+                if (input) {
+                    input.focus();
+                    input.select();
+                }
+            }
+        }
+
+        function closeGenerateModal() {
+            const modal = document.getElementById('generateModal');
+            if (modal) {
+                modal.close();
+            }
+        }
+
+        function generateJurors() {
+            const jurorCount = document.getElementById('modalJurorCount').value;
+            console.log(`Generate ${jurorCount} jurors - functionality not implemented yet`);
+            
+            // TODO: Implement juror generation functionality here
+            alert(`Generating ${jurorCount} jurors - functionality coming soon!`);
+            
+            closeGenerateModal();
+        }
+
+        // Close modal when clicking outside of it (backdrop click)
+        document.getElementById('generateModal').addEventListener('click', function(event) {
+            if (event.target === this) {
+                closeGenerateModal();
+            }
+        });
+
+        // Escape key handling is automatic with dialog element
 
         function handleFiles(event) {
             console.log('handleFiles called');
@@ -332,7 +406,6 @@
             if (!uploadSuccess) return;
 
             // Get form values
-            const jurorCount = document.getElementById('jurorCount').value;
             const repeatCount = document.getElementById('repeatCount').value;
             
             const evaluationOptions = [];
@@ -376,7 +449,6 @@
                 
                 // Use Server-Sent Events to stream notebook execution
                 const eventSource = new EventSource('/run_notebook?' + new URLSearchParams({
-                    juror_count: parseInt(jurorCount),
                     repeat_count: parseInt(repeatCount),
                     evaluation_options: JSON.stringify(evaluationOptions)
                 }));
