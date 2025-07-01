@@ -38,6 +38,7 @@ gcloud services enable sts.googleapis.com
 gcloud services enable cloudbuild.googleapis.com
 gcloud services enable run.googleapis.com
 gcloud services enable artifactregistry.googleapis.com
+gcloud services enable secretmanager.googleapis.com
 
 # Create Artifact Registry repository
 echo "📦 Creating Artifact Registry repository..."
@@ -79,6 +80,21 @@ gcloud projects add-iam-policy-binding $PROJECT_ID \
 gcloud projects add-iam-policy-binding $PROJECT_ID \
     --member="serviceAccount:$SERVICE_ACCOUNT_NAME@$PROJECT_ID.iam.gserviceaccount.com" \
     --role="roles/iam.serviceAccountUser"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+    --member="serviceAccount:$SERVICE_ACCOUNT_NAME@$PROJECT_ID.iam.gserviceaccount.com" \
+    --role="roles/secretmanager.secretAccessor"
+
+# Create secrets for the application
+echo "🔐 Creating application secrets..."
+if ! gcloud secrets describe google-api-key >/dev/null 2>&1; then
+    echo "Please create the google-api-key secret manually:"
+    echo "gcloud secrets create google-api-key"
+    echo "echo 'YOUR_GOOGLE_API_KEY' | gcloud secrets versions add google-api-key --data-file=-"
+    echo "Visit: https://aistudio.google.com/app/apikey to get your API key"
+else
+    echo "ℹ️  google-api-key secret already exists"
+fi
 
 # Create Workload Identity Pool
 echo "🆔 Creating Workload Identity Pool..."

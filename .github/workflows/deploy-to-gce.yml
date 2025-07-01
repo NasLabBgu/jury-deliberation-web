@@ -56,12 +56,20 @@ jobs:
             --platform managed \
             --region ${{ env.REGION }} \
             --allow-unauthenticated \
-            --memory 2Gi \
-            --cpu 1 \
+            --memory 4Gi \
+            --cpu 2 \
             --concurrency 80 \
             --max-instances 10 \
-            --timeout 300 \
-            --set-env-vars FLASK_ENV=production
+            --timeout 3600 \
+            --set-env-vars FLASK_ENV=production,PORT=8080 \
+            --update-secrets GOOGLE_API_KEY=google-api-key:latest
+      
+      - name: Set IAM policy for public access
+        run: |
+          gcloud beta run services add-iam-policy-binding ${{ env.SERVICE_NAME }} \
+            --region=${{ env.REGION }} \
+            --member="allUsers" \
+            --role="roles/run.invoker"
       
       - name: Get service URL
         id: get-url
