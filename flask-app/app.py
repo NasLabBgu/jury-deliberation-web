@@ -410,6 +410,17 @@ def initialize_api_key():
 # Initialize API key on startup
 initialize_api_key()
 
+# Add startup logging for debugging
+logger.info(f"Flask app starting - Environment: {os.environ.get('FLASK_ENV', 'production')}")
+logger.info(f"Port: {PORT}, Host: {HOST}")
+logger.info(f"Debug mode: {DEBUG}")
+
+# WSGI entry point for production servers like Gunicorn
+def create_app():
+    """Application factory for WSGI servers"""
+    logger.info("App factory called - returning Flask app instance")
+    return app
+
 if __name__ == "__main__":
     try:
         # Use production-safe server settings

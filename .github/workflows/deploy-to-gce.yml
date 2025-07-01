@@ -43,6 +43,10 @@ jobs:
           echo "Starting Cloud Build..."
           gcloud builds submit . --config ci/cloudbuild.yaml --substitutions=_IMAGE_URL=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/jury-deliberation-app/${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} --async
           echo "✅ Build submitted successfully!"
+          
+          # Wait a bit for the build to potentially complete
+          echo "Waiting 2 minutes for build to complete..."
+          sleep 120
       
       - name: Deploy to Cloud Run
         run: |
@@ -50,13 +54,21 @@ jobs:
             --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/jury-deliberation-app/${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} \
             --platform managed \
             --region ${{ env.REGION }} \
-            --allow-unauthenticated \
             --memory 4Gi \
             --cpu 2 \
             --concurrency 80 \
             --max-instances 10 \
             --timeout 3600 \
+            --cpu-boost \
+            --execution-environment gen2 \
             --set-env-vars FLASK_ENV=production
+            
+      - name: Set public access
+        run: |
+          gcloud run services add-iam-policy-binding ${{ env.SERVICE_NAME }} \
+            --region=${{ env.REGION }} \
+            --member=allUsers \
+            --role=roles/run.invoker
       
       - name: Get service URL
         id: get-url
