@@ -92,12 +92,18 @@ jobs:
           
           echo "✅ Deployment completed!"
             
-      - name: Set public access
+      - name: Ensure public access
         run: |
-          gcloud run services add-iam-policy-binding ${{ env.SERVICE_NAME }} \
-            --region=${{ env.REGION }} \
-            --member=allUsers \
-            --role=roles/run.invoker
+          echo "Checking public access..."
+          if ! gcloud run services get-iam-policy ${{ env.SERVICE_NAME }} --region=${{ env.REGION }} --format="value(bindings.members)" | grep -q "allUsers"; then
+            echo "Setting public access..."
+            gcloud run services add-iam-policy-binding ${{ env.SERVICE_NAME }} \
+              --region=${{ env.REGION }} \
+              --member=allUsers \
+              --role=roles/run.invoker
+          else
+            echo "✅ Service is already publicly accessible"
+          fi
       
       - name: Get service URL
         id: get-url
