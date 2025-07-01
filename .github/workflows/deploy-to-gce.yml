@@ -42,9 +42,18 @@ jobs:
         run: |
           # Submit build asynchronously to avoid log streaming issues
           echo "Starting Cloud Build..."
-          BUILD_ID=$(gcloud builds submit . --config ci/cloudbuild.yaml --substitutions=_IMAGE_URL=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/jury-deliberation-app/${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} --async --format="get(metadata.build.id)")
+          gcloud builds submit . --config ci/cloudbuild.yaml --substitutions=_IMAGE_URL=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/jury-deliberation-app/${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} --async > build_output.txt
           
+          # Extract build ID from output
+          BUILD_ID=$(grep -o 'builds/[^]]*' build_output.txt | cut -d'/' -f2)
           echo "Build ID: $BUILD_ID"
+          cat build_output.txt
+          
+          if [ -z "$BUILD_ID" ]; then
+            echo "❌ Failed to get build ID"
+            exit 1
+          fi
+          
           echo "Waiting for build to complete..."
           
           # Wait for build to complete
