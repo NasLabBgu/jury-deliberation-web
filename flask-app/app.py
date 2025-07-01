@@ -238,28 +238,8 @@ def run_notebook():
                 script_content = f'''
 import sys
 import os
-import subprocess
 
-# Install required packages
-print("Installing required packages...")
-packages = [
-    "langgraph", 
-    "langchain-openai", 
-    "langchain-core", 
-    "langchain-google-genai", 
-    "pyyaml"
-]
-
-for package in packages:
-    try:
-        print(f"Installing {{package}}...")
-        subprocess.check_call([sys.executable, "-m", "pip", "install", package])
-        print(f"✓ {{package}} installed successfully")
-    except subprocess.CalledProcessError as e:
-        print(f"✗ Failed to install {{package}}: {{e}}")
-
-print("Package installation completed\\n")
-
+# Setup paths and environment
 sys.path.append('{backend_dir}')
 
 # Change to backend directory to access notebook functions

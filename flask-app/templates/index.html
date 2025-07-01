@@ -3,15 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <title>Interactive Table</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
         table {
-            width: 60%;
+            width: 85%;
             margin: 2rem auto;
             border-collapse: collapse;
         }
         td {
             padding: 1rem;
-            border: 1px solid #ccc;
+            /* border: 1px solid #ccc; */
             position: relative;
         }
         .controls {
@@ -40,16 +41,16 @@
             <!-- Filename rows will be inserted here -->
             <tr id="uploadRow">
                 <td>
-                    <label for="fileInput" id="uploadLabel" style="cursor:pointer; color:blue; text-decoration:underline;">upload</label>
+                    <button type="button" style="color: white" id="uploadButton">Upload</button>
                     <input type="file" id="fileInput" style="display:none;" multiple onchange="handleFiles(event)">
                 </td>
             </tr>
-            <tr>
+            <tr id="repeatRow" style="display: none;">
                 <td>
                     repeat <input type="number" min="1" value="10" style="width:3em;" id="repeatCount"> times
                 </td>
             </tr>
-            <tr>
+            <tr id="evaluateRow" style="display: none;">
                 <td>
                     evaluate 
                     <label><input type="checkbox" id="cb_participation"> participation</label>
@@ -57,10 +58,9 @@
                     <label><input type="checkbox" id="cb_arguments"> arguments</label>
                 </td>
             </tr>
-            <tr>
+            <tr id="runRow" style="display: none;">
                 <td>
-                    <button id="runButton" onclick="runProcess()" style="padding:0.5em 1em; background:#007bff; color:white; border:none; border-radius:4px; cursor:pointer;">Run Process</button>
-                    <span id="runStatus" style="margin-left:1em; color:#666;"></span>
+                    <button id="runButton" onclick="runProcess()" style="/* padding: 0.5em 1em; */ background: #007bff; color: white; /* border: none; */ /* border-radius: 4px; */ cursor: pointer;">Run Process</button>
                 </td>
             </tr>
         </tbody>
@@ -72,13 +72,13 @@
 
         document.addEventListener('DOMContentLoaded', function() {
             console.log('DOM loaded, setting up file upload');
-            const uploadLabel = document.getElementById('uploadLabel');
+            const uploadButton = document.getElementById('uploadButton');
             const fileInput = document.getElementById('fileInput');
             
-            if (uploadLabel && fileInput) {
-                uploadLabel.addEventListener('click', function(e) {
+            if (uploadButton && fileInput) {
+                uploadButton.addEventListener('click', function(e) {
                     e.preventDefault();
-                    console.log('Upload label clicked');
+                    console.log('Upload button clicked');
                     fileInput.click();
                 });
                 
@@ -118,6 +118,17 @@
             }
         }
 
+        function updateRowVisibility() {
+            const hasFiles = uploadedFiles.length > 0;
+            const repeatRow = document.getElementById('repeatRow');
+            const evaluateRow = document.getElementById('evaluateRow');
+            const runRow = document.getElementById('runRow');
+            
+            if (repeatRow) repeatRow.style.display = hasFiles ? '' : 'none';
+            if (evaluateRow) evaluateRow.style.display = hasFiles ? '' : 'none';
+            if (runRow) runRow.style.display = hasFiles ? '' : 'none';
+        }
+
         function handleFiles(event) {
             console.log('handleFiles called');
             const files = Array.from(event.target.files);
@@ -135,6 +146,7 @@
                     };
                     addFileRow(fileObj);
                 });
+                updateRowVisibility();
             } else {
                 console.log('No files selected');
             }
@@ -166,12 +178,14 @@
             row.setAttribute('data-filename', fileObj.name);
             row.innerHTML = `
                 <td>
-                    <span style="font-weight:bold;">${fileObj.name}</span>
-                    <div style="margin-left:1em; display:inline-block;">
-                        <label><input type="radio" name="category_${fileObj.name}" value="juror" checked> juror</label>
-                        <label style="margin-left:0.5em;"><input type="radio" name="category_${fileObj.name}" value="case"> case</label>
-                        <label style="margin-left:0.5em;">weight: <input type="number" id="weight_${fileObj.name}" min="0" step="1" value="100" style="width:4em;"></label>
-                        <button type="button" onclick="deleteFileRow('${fileObj.name}')" style="margin-left:1em;">Delete</button>
+                    <div class="file-row-container">
+                        <span style="font-weight:bold;">${fileObj.name}</span>
+                        <div class="file-row-controls">
+                            <label><input type="radio" name="category_${fileObj.name}" value="juror" checked> juror</label>
+                            <label><input type="radio" name="category_${fileObj.name}" value="case"> case</label>
+                            <label>weight: <input type="number" id="weight_${fileObj.name}" min="0" step="1" value="100"></label>
+                            <button type="button" style="color: white" onclick="deleteFileRow('${fileObj.name}')">Delete</button>
+                        </div>
                     </div>
                 </td>
             `;
@@ -191,6 +205,7 @@
                 }
             });
             if (uploadedFiles.length === 0) addNoFilesRow();
+            updateRowVisibility();
         }
 
         function removeNoFilesRow() {
@@ -212,12 +227,12 @@
 
         async function uploadFilesToServer() {
             if (uploadedFiles.length === 0) {
-                document.getElementById('runStatus').textContent = 'No files to upload';
+                console.log('No files to upload');
                 return false;
             }
 
             try {
-                document.getElementById('runStatus').textContent = 'Clearing existing files and uploading...';
+                console.log('Clearing existing files and uploading...');
                 
                 // Create FormData to send actual files
                 const formData = new FormData();
@@ -246,15 +261,13 @@
                 
                 if (result.success) {
                     console.log('Files uploaded successfully:', result);
-                    document.getElementById('runStatus').textContent = result.message || `Uploaded ${result.uploaded_files.length} files`;
                     return true;
                 } else {
-                    document.getElementById('runStatus').textContent = `Upload error: ${result.error}`;
+                    console.error('Upload error:', result.error);
                     return false;
                 }
             } catch (error) {
                 console.error('Upload error:', error);
-                document.getElementById('runStatus').textContent = `Upload failed: ${error.message}`;
                 return false;
             }
         }
@@ -274,8 +287,7 @@
             if (document.getElementById('cb_arguments').checked) evaluationOptions.push('arguments');
 
             try {
-                document.getElementById('runStatus').textContent = 'Starting notebook execution...';
-                document.getElementById('runStatus').style.color = '#007bff';
+                console.log('Starting notebook execution...');
                 
                 // Create output area for streaming results
                 let outputArea = document.getElementById('outputArea');
@@ -286,14 +298,19 @@
                         margin-top: 1em;
                         padding: 1em;
                         border: 1px solid #ccc;
-                        background: #f8f9fa;
                         max-height: 400px;
                         overflow-y: auto;
                         white-space: pre-wrap;
                         font-family: monospace;
                         font-size: 12px;
                     `;
-                    document.getElementById('runStatus').parentNode.appendChild(outputArea);
+                    // Append to the table body
+                    const table = document.getElementById('mainTable').getElementsByTagName('tbody')[0];
+                    const outputRow = document.createElement('tr');
+                    const outputCell = document.createElement('td');
+                    outputCell.appendChild(outputArea);
+                    outputRow.appendChild(outputCell);
+                    table.appendChild(outputRow);
                 }
                 outputArea.innerHTML = '';
                 
@@ -309,19 +326,14 @@
                         const data = JSON.parse(event.data);
                         
                         if (data.status === 'started') {
-                            document.getElementById('runStatus').textContent = data.message;
                             outputArea.innerHTML += `[STARTED] ${data.message}\n`;
                         } else if (data.status === 'output') {
                             outputArea.innerHTML += data.message + '\n';
                             outputArea.scrollTop = outputArea.scrollHeight;
                         } else if (data.status === 'completed') {
-                            document.getElementById('runStatus').textContent = data.message;
-                            document.getElementById('runStatus').style.color = '#28a745';
                             outputArea.innerHTML += `[COMPLETED] ${data.message}\n`;
                             eventSource.close();
                         } else if (data.status === 'error') {
-                            document.getElementById('runStatus').textContent = `Error: ${data.message}`;
-                            document.getElementById('runStatus').style.color = '#dc3545';
                             outputArea.innerHTML += `[ERROR] ${data.message}\n`;
                             eventSource.close();
                         }
@@ -333,15 +345,12 @@
                 
                 eventSource.onerror = function(event) {
                     console.error('SSE error:', event);
-                    document.getElementById('runStatus').textContent = 'Connection error occurred';
-                    document.getElementById('runStatus').style.color = '#dc3545';
+                    outputArea.innerHTML += `[ERROR] Connection error occurred\n`;
                     eventSource.close();
                 };
                 
             } catch (error) {
                 console.error('Run error:', error);
-                document.getElementById('runStatus').textContent = `Run failed: ${error.message}`;
-                document.getElementById('runStatus').style.color = '#dc3545';
             }
         }
     </script>
