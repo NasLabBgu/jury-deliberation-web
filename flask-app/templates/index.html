@@ -3,9 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <title>Interactive Table</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
         table {
-            width: 60%;
+            width: 90%;
             margin: 2rem auto;
             border-collapse: collapse;
         }
@@ -13,6 +14,7 @@
             padding: 1rem;
             border: 1px solid #ccc;
             position: relative;
+            width: 100%;
         }
         .controls {
             display: none;
@@ -166,12 +168,14 @@
             row.setAttribute('data-filename', fileObj.name);
             row.innerHTML = `
                 <td>
-                    <span style="font-weight:bold;">${fileObj.name}</span>
-                    <div style="margin-left:1em; display:inline-block;">
-                        <label><input type="radio" name="category_${fileObj.name}" value="juror" checked> juror</label>
-                        <label style="margin-left:0.5em;"><input type="radio" name="category_${fileObj.name}" value="case"> case</label>
-                        <label style="margin-left:0.5em;">weight: <input type="number" id="weight_${fileObj.name}" min="0" step="1" value="100" style="width:4em;"></label>
-                        <button type="button" onclick="deleteFileRow('${fileObj.name}')" style="margin-left:1em;">Delete</button>
+                    <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+                        <span style="font-weight:bold;">${fileObj.name}</span>
+                        <div style="display: flex; align-items: center; gap: 1em;">
+                            <label><input type="radio" name="category_${fileObj.name}" value="juror" checked> juror</label>
+                            <label><input type="radio" name="category_${fileObj.name}" value="case"> case</label>
+                            <label>weight: <input type="number" id="weight_${fileObj.name}" min="0" step="1" value="100" style="width:4em;"></label>
+                            <button type="button" onclick="deleteFileRow('${fileObj.name}')">Delete</button>
+                        </div>
                     </div>
                 </td>
             `;
