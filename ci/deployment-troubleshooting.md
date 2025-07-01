@@ -2,6 +2,17 @@
 
 ## Recent Issues and Solutions
 
+### Issue: IAM Policy Binding Permission Denied (July 2025)
+
+**Problem**: GitHub Actions workflow failing with `PERMISSION_DENIED: Permission 'run.services.setIamPolicy' denied` when trying to set public access on Cloud Run service.
+
+**Root Cause**: The GitHub Actions service account had `roles/run.developer` but not `roles/run.admin`, which is required for IAM policy operations.
+
+**Solution**: 
+1. Added `roles/run.admin` to the GitHub Actions service account in setup script
+2. Made the public access step conditional (only runs if service isn't already public)
+3. The `--allow-unauthenticated` flag in deployment should handle public access automatically
+
 ### Issue: Container Startup Failures & Log Streaming Permissions (July 2025)
 
 **Problem**: GitHub Actions workflow was failing with log streaming permission errors when using `gcloud builds log --stream`, and container startup failures were causing traffic to fall back to older working revisions.
@@ -86,6 +97,20 @@ gcloud run services logs read jury-deliberation-app --region=me-west1 --limit=50
 - **Runtime**: Cloud Run (Generation 2)
 - **Authentication**: Workload Identity Federation (keyless)
 - **Region**: me-west1 (Montreal)
+
+## Service Account Roles
+The GitHub Actions service account has these roles:
+- `roles/run.developer` - Deploy and manage Cloud Run services
+- `roles/run.admin` - Set IAM policies on Cloud Run services
+- `roles/artifactregistry.writer` - Push container images
+- `roles/cloudbuild.builds.builder` - Submit Cloud Build jobs
+- `roles/cloudbuild.builds.editor` - Manage Cloud Build jobs
+- `roles/cloudbuild.builds.viewer` - View Cloud Build status
+- `roles/storage.admin` - Access Cloud Build storage
+- `roles/iam.serviceAccountUser` - Use service accounts
+- `roles/secretmanager.secretAccessor` - Access secrets
+- `roles/source.admin` - Access source repositories
+- `roles/logging.viewer` - View logs (limited use due to VPC-SC)
 
 ## Best Practices
 1. Always verify build completion before deployment
