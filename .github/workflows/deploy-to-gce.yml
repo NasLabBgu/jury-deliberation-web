@@ -41,15 +41,29 @@ jobs:
       - name: Build Docker image with Cloud Build
         run: |
           echo "Starting Cloud Build..."
-          gcloud builds submit . --config ci/cloudbuild.yaml --substitutions=_IMAGE_URL=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/jury-deliberation-app/${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} --async
-          echo "✅ Build submitted successfully!"
+          BUILD_ID=$(gcloud builds submit . --config ci/cloudbuild.yaml --substitutions=_IMAGE_URL=${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/jury-deliberation-app/${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} --format="value(id)")
+          echo "Build ID: $BUILD_ID"
           
-          # Wait a reasonable time for build to complete
-          echo "Waiting 3 minutes for build to complete..."
-          sleep 180
+          echo "Waiting for build to complete..."
+          gcloud builds log $BUILD_ID --stream
+          
+          # Check build status
+          BUILD_STATUS=$(gcloud builds describe $BUILD_ID --format="value(status)")
+          echo "Build status: $BUILD_STATUS"
+          
+          if [ "$BUILD_STATUS" != "SUCCESS" ]; then
+            echo "❌ Build failed with status: $BUILD_STATUS"
+            exit 1
+          fi
+          
+          echo "✅ Build completed successfully!"
       
       - name: Deploy to Cloud Run
         run: |
+          echo "Verifying image exists..."
+          gcloud artifacts docker images list ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/jury-deliberation-app/${{ env.SERVICE_NAME }} --include-tags --filter="tags:${{ env.IMAGE_TAG }}" --limit=1 --format="value(digest)"
+          
+          echo "Deploying to Cloud Run..."
           gcloud run deploy ${{ env.SERVICE_NAME }} \
             --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/jury-deliberation-app/${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} \
             --platform managed \
@@ -59,9 +73,11 @@ jobs:
             --concurrency 80 \
             --max-instances 10 \
             --timeout 3600 \
-            --cpu-boost \
             --execution-environment gen2 \
-            --set-env-vars FLASK_ENV=production
+            --set-env-vars FLASK_ENV=production \
+            --allow-unauthenticated
+          
+          echo "✅ Deployment completed!"
             
       - name: Set public access
         run: |
@@ -80,10 +96,26 @@ jobs:
       - name: Health check
         run: |
           echo "Testing deployment health..."
-          sleep 30  # Wait for service to be ready
-          if curl -s --max-time 30 "${{ steps.get-url.outputs.SERVICE_URL }}/health" > /dev/null; then
-            echo "✅ Health check passed!"
-          else
-            echo "❌ Health check failed!"
-            exit 1
-          fi
+          SERVICE_URL="${{ steps.get-url.outputs.SERVICE_URL }}"
+          
+          # Wait for service to be ready and do multiple retries
+          for i in {1..6}; do
+            echo "Health check attempt $i/6..."
+            if curl -s --max-time 30 "${SERVICE_URL}/health" > /dev/null; then
+              echo "✅ Health check passed!"
+              
+              # Also test the main endpoint
+              if curl -s --max-time 30 "${SERVICE_URL}/" | grep -q "Interactive Table"; then
+                echo "✅ Main endpoint working!"
+                exit 0
+              else
+                echo "⚠️ Main endpoint not responding correctly"
+              fi
+            else
+              echo "❌ Health check failed, waiting 30 seconds..."
+              sleep 30
+            fi
+          done
+          
+          echo "❌ All health checks failed!"
+          exit 1
