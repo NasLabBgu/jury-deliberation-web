@@ -38,19 +38,11 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGION }}-docker.pkg.dev
       
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-      
-      - name: Build Docker image
+      - name: Build Docker image with Cloud Build
         run: |
-          docker buildx build --platform linux/amd64 -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}/${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} \
-            -f ./ci/Dockerfile \
-            --load \
+          gcloud builds submit --tag ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}/${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }} \
+            --file ./ci/Dockerfile \
             ./flask-app
-      
-      - name: Push Docker image to Artifact Registry
-        run: |
-          docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/${{ env.SERVICE_NAME }}/${{ env.SERVICE_NAME }}:${{ env.IMAGE_TAG }}
       
       - name: Deploy to Cloud Run
         run: |
@@ -65,13 +57,6 @@ jobs:
             --max-instances 10 \
             --timeout 3600 \
             --set-env-vars FLASK_ENV=production
-      
-      - name: Set IAM policy for public access
-        run: |
-          gcloud beta run services add-iam-policy-binding ${{ env.SERVICE_NAME }} \
-            --region=${{ env.REGION }} \
-            --member="allUsers" \
-            --role="roles/run.invoker"
       
       - name: Get service URL
         id: get-url
