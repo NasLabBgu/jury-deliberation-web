@@ -5,6 +5,124 @@
     <title>Interactive Table</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
+    
+    <!-- Force dark mode always -->
+    <style>
+        /* Override color scheme detection to always use dark mode */
+        html {
+            color-scheme: dark !important;
+        }
+        
+        /* Force dark theme variables to be active regardless of user preference */
+        :root {
+            color-scheme: dark !important;
+            --pico-background-color: rgb(19, 22.5, 30.5) !important;
+            --pico-color: #c2c7d0 !important;
+            --pico-text-selection-color: rgba(1, 170, 255, 0.1875) !important;
+            --pico-muted-color: #7b8495 !important;
+            --pico-muted-border-color: #202632 !important;
+            --pico-primary: #01aaff !important;
+            --pico-primary-background: #0172ad !important;
+            --pico-primary-border: var(--pico-primary-background) !important;
+            --pico-primary-underline: rgba(1, 170, 255, 0.5) !important;
+            --pico-primary-hover: #79c0ff !important;
+            --pico-primary-hover-background: #017fc0 !important;
+            --pico-primary-hover-border: var(--pico-primary-hover-background) !important;
+            --pico-primary-hover-underline: var(--pico-primary-hover) !important;
+            --pico-primary-focus: rgba(1, 170, 255, 0.375) !important;
+            --pico-primary-inverse: #fff !important;
+            --pico-secondary: #969eaf !important;
+            --pico-secondary-background: #525f7a !important;
+            --pico-secondary-border: var(--pico-secondary-background) !important;
+            --pico-secondary-underline: rgba(150, 158, 175, 0.5) !important;
+            --pico-secondary-hover: #b3b9c5 !important;
+            --pico-secondary-hover-background: #5a677f !important;
+            --pico-secondary-hover-border: var(--pico-secondary-hover-background) !important;
+            --pico-secondary-hover-underline: var(--pico-secondary-hover) !important;
+            --pico-secondary-focus: rgba(150, 158, 175, 0.375) !important;
+            --pico-secondary-inverse: #fff !important;
+            --pico-contrast: #ffffff !important;
+            --pico-contrast-background: #ffffff !important;
+            --pico-contrast-border: var(--pico-contrast-background) !important;
+            --pico-contrast-underline: rgba(255, 255, 255, 0.5) !important;
+            --pico-contrast-hover: #ffffff !important;
+            --pico-contrast-hover-background: #ffffff !important;
+            --pico-contrast-hover-border: var(--pico-contrast-hover-background) !important;
+            --pico-contrast-hover-underline: var(--pico-contrast-hover) !important;
+            --pico-contrast-focus: rgba(255, 255, 255, 0.375) !important;
+            --pico-contrast-inverse: #000 !important;
+            --pico-box-shadow: 0.0145rem 0.029rem 0.174rem rgba(27, 40, 50, 0.01698), 0.0335rem 0.067rem 0.402rem rgba(27, 40, 50, 0.024), 0.0625rem 0.125rem 0.75rem rgba(27, 40, 50, 0.03), 0.1125rem 0.225rem 1.35rem rgba(27, 40, 50, 0.036), 0.2085rem 0.417rem 2.502rem rgba(27, 40, 50, 0.04302), 0.5rem 1rem 6rem rgba(27, 40, 50, 0.06), 0 0 0 0.0625rem rgba(27, 40, 50, 0.015) !important;
+            --pico-h1-color: #ffffff !important;
+            --pico-h2-color: #e1e6ee !important;
+            --pico-h3-color: #c2c7d0 !important;
+            --pico-h4-color: #c2c7d0 !important;
+            --pico-h5-color: #c2c7d0 !important;
+            --pico-h6-color: #7b8495 !important;
+            --pico-mark-background-color: #d1ecf1 !important;
+            --pico-mark-color: #024c5a !important;
+            --pico-ins-color: #388e3c !important;
+            --pico-del-color: #c62828 !important;
+            --pico-blockquote-border-color: var(--pico-muted-border-color) !important;
+            --pico-blockquote-footer-color: var(--pico-muted-color) !important;
+            --pico-button-box-shadow: 0 0 0 rgba(0, 0, 0, 0) !important;
+            --pico-button-hover-box-shadow: 0 0 0 rgba(0, 0, 0, 0) !important;
+            --pico-button-focus-box-shadow: 0 0 0 var(--pico-outline-width) var(--pico-primary-focus) !important;
+            --pico-form-element-background-color: #11141a !important;
+            --pico-form-element-selected-background-color: #1e2734 !important;
+            --pico-form-element-border-color: #202632 !important;
+            --pico-form-element-color: var(--pico-color) !important;
+            --pico-form-element-placeholder-color: var(--pico-muted-color) !important;
+            --pico-form-element-active-background-color: var(--pico-form-element-background-color) !important;
+            --pico-form-element-active-border-color: var(--pico-primary-border) !important;
+            --pico-form-element-focus-color: var(--pico-primary-border) !important;
+            --pico-form-element-disabled-opacity: 0.5 !important;
+            --pico-form-element-invalid-border-color: #b94a48 !important;
+            --pico-form-element-invalid-active-border-color: #a43633 !important;
+            --pico-form-element-invalid-focus-color: var(--pico-form-element-invalid-active-border-color) !important;
+            --pico-form-element-valid-border-color: #388e3c !important;
+            --pico-form-element-valid-active-border-color: #2d7031 !important;
+            --pico-form-element-valid-focus-color: var(--pico-form-element-valid-active-border-color) !important;
+            --pico-switch-background-color: #424a56 !important;
+            --pico-switch-checked-background-color: var(--pico-primary-background) !important;
+            --pico-switch-color: var(--pico-primary-inverse) !important;
+            --pico-switch-thumb-box-shadow: 0 0 0 rgba(0, 0, 0, 0) !important;
+            --pico-range-border-color: #2d3748 !important;
+            --pico-range-active-border-color: #475569 !important;
+            --pico-range-thumb-border-color: var(--pico-background-color) !important;
+            --pico-range-thumb-color: var(--pico-secondary-background) !important;
+            --pico-range-thumb-active-color: var(--pico-primary-background) !important;
+            --pico-table-border-color: var(--pico-muted-border-color) !important;
+            --pico-table-row-stripped-background-color: rgba(88, 96, 109, 0.0375) !important;
+            --pico-code-background-color: #1a1d23 !important;
+            --pico-code-color: var(--pico-muted-color) !important;
+            --pico-code-kbd-background-color: var(--pico-color) !important;
+            --pico-code-kbd-color: var(--pico-background-color) !important;
+            --pico-code-tag-color: #b4637a !important;
+            --pico-code-property-color: #7fdbca !important;
+            --pico-code-value-color: #b8cc74 !important;
+            --pico-code-comment-color: #8a8a8a !important;
+            --pico-accordion-border-color: var(--pico-muted-border-color) !important;
+            --pico-accordion-active-summary-color: var(--pico-primary) !important;
+            --pico-accordion-close-summary-color: var(--pico-color) !important;
+            --pico-accordion-open-summary-color: var(--pico-muted-color) !important;
+            --pico-card-background-color: #141720 !important;
+            --pico-card-border-color: var(--pico-card-background-color) !important;
+            --pico-card-box-shadow: var(--pico-box-shadow) !important;
+            --pico-card-sectioning-background-color: #0f1114 !important;
+            --pico-dropdown-background-color: #1a1d23 !important;
+            --pico-dropdown-border-color: #202632 !important;
+            --pico-dropdown-box-shadow: var(--pico-box-shadow) !important;
+            --pico-dropdown-color: var(--pico-color) !important;
+            --pico-dropdown-hover-background-color: rgba(42, 48, 60, 0.75) !important;
+            --pico-loading-spinner-opacity: 0.5 !important;
+            --pico-modal-overlay-background-color: rgba(7, 9, 12, 0.8) !important;
+            --pico-progress-background-color: #202632 !important;
+            --pico-progress-color: var(--pico-primary-background) !important;
+            --pico-tooltip-background-color: var(--pico-contrast) !important;
+            --pico-tooltip-color: var(--pico-contrast-inverse) !important;
+        }
+    </style>
+    
     <style>
         table {
             width: 85%;
