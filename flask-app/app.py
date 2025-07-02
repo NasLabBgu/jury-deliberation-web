@@ -44,7 +44,6 @@ logger.info(f"Environment variables: PORT={os.environ.get('PORT')}, HOST={os.env
 app = Flask(__name__)
 socketio = SocketIO(app, 
                    cors_allowed_origins="*",
-                   async_mode='eventlet',  # Use eventlet for better performance
                    logger=True,
                    engineio_logger=False)
 logger.info("Flask app instance created successfully")
@@ -953,11 +952,12 @@ logger.info(f"Debug mode: {DEBUG}")
 # WSGI entry point for production servers like Gunicorn
 def create_app():
     """Application factory for WSGI servers"""
-    logger.info("App factory called - returning SocketIO app instance")
-    return socketio
+    logger.info("App factory called - returning Flask app instance with SocketIO")
+    return app
 
-# Make the SocketIO app available for WSGI servers (this is important for WebSocket support)
-application = socketio
+# Make the Flask app available for WSGI servers
+# The SocketIO instance will handle WebSocket connections automatically
+application = app
 
 if __name__ == "__main__":
     try:
