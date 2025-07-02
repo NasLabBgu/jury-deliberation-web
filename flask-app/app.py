@@ -387,7 +387,8 @@ def run_notebook():
                     case_file = pair['case_file']
                     run_number = pair['run_number']
                     
-                    yield f"data: {json.dumps({'status': 'output', 'message': f'\\n=== Run {run_number}/{total_pairs} ==='})}\n\n"
+                    run_header = f'\n=== Run {run_number}/{total_pairs} ==='
+                    yield f"data: {json.dumps({'status': 'output', 'message': run_header})}\n\n"
                     juror_name = juror_file['name']
                     case_name = case_file['name']
                     
