@@ -426,7 +426,7 @@ def generate_jurors():
                 # Get the backend directory path (where NLPAgentsToolbox should be)
                 backend_dir = os.path.join(os.path.dirname(__file__), 'backend')
                 nlp_toolbox_dir = os.path.join(backend_dir, 'NLPAgentsToolbox')
-                venv_python = os.path.join(nlp_toolbox_dir, '.venv', 'bin', 'python')
+                system_python = '/usr/local/bin/python3'  # Docker container Python path
                 mkbio_script = os.path.join(nlp_toolbox_dir, 'tools', 'mkbio.py')
                 lsbio_script = os.path.join(nlp_toolbox_dir, 'tools', 'lsbio.py')
                 
@@ -437,9 +437,9 @@ def generate_jurors():
                     yield f"data: {json.dumps({'status': 'error', 'message': f'NLPAgentsToolbox not found at {nlp_toolbox_dir}'})}\n\n"
                     return
                 
-                # Check if virtual environment Python exists
-                if not os.path.exists(venv_python):
-                    yield f"data: {json.dumps({'status': 'error', 'message': f'Virtual environment Python not found at {venv_python}'})}\n\n"
+                # Check if system Python exists
+                if not os.path.exists(system_python):
+                    yield f"data: {json.dumps({'status': 'error', 'message': f'System Python not found at {system_python}'})}\n\n"
                     return
                 
                 # Check if scripts exist
@@ -455,7 +455,7 @@ def generate_jurors():
                 yield f"data: {json.dumps({'status': 'output', 'message': f'Running mkbio.py -n {juror_count}...'})}\n\n"
                 
                 process = subprocess.Popen(
-                    [venv_python, mkbio_script, '-n', str(juror_count)],
+                    [system_python, mkbio_script, '-n', str(juror_count)],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     universal_newlines=True,
@@ -485,7 +485,7 @@ def generate_jurors():
                 yield f"data: {json.dumps({'status': 'output', 'message': 'Running lsbio.py -e...'})}\n\n"
                 
                 process = subprocess.Popen(
-                    [venv_python, lsbio_script, '-e'],
+                    [system_python, lsbio_script, '-e'],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     universal_newlines=True,
@@ -559,6 +559,8 @@ def test_env():
     """Test endpoint to check environment variables"""
     import os
     env_info = {
+        'openai_api_key_available': bool(os.environ.get('OPENAI_API_KEY')),
+        'openai_api_key_length': len(os.environ.get('OPENAI_API_KEY', '')),
         'google_api_key_available': bool(os.environ.get('GOOGLE_API_KEY')),
         'google_api_key_length': len(os.environ.get('GOOGLE_API_KEY', '')),
         'port': os.environ.get('PORT', 'Not set'),
@@ -571,7 +573,8 @@ def test_env():
 # Initialize API key file from environment variable if available
 def initialize_api_key():
     """Create API key file from environment variable if available"""
-    api_key = os.environ.get('GOOGLE_API_KEY')
+    # Try both environment variable names for compatibility
+    api_key = os.environ.get('OPENAI_API_KEY') or os.environ.get('GOOGLE_API_KEY')
     if api_key:
         # Create api_key file in backend directory where notebook expects it
         backend_dir = os.path.join(os.path.dirname(__file__), 'backend')
@@ -585,7 +588,7 @@ def initialize_api_key():
         except Exception as e:
             logger.error(f"Failed to create API key file: {e}")
     else:
-        logger.warning("No GOOGLE_API_KEY environment variable found")
+        logger.warning("No OPENAI_API_KEY or GOOGLE_API_KEY environment variable found")
 
 # Initialize API key on startup
 initialize_api_key()
@@ -605,13 +608,15 @@ def handle_start_interactive_generation(data):
         # Get the backend directory path
         backend_dir = os.path.join(os.path.dirname(__file__), 'backend')
         nlp_toolbox_dir = os.path.join(backend_dir, 'NLPAgentsToolbox')
-        venv_python = os.path.join(nlp_toolbox_dir, '.venv', 'bin', 'python')
+        
+        # Use system Python instead of virtual environment Python
+        system_python = '/usr/local/bin/python3'  # Docker container Python path
         mkbio_script = os.path.join(nlp_toolbox_dir, 'tools', 'mkbio.py')
         rmbio_script = os.path.join(nlp_toolbox_dir, 'tools', 'rmbio.py')
         
         logger.info(f"Backend dir: {backend_dir}")
         logger.info(f"NLP toolbox dir: {nlp_toolbox_dir}")
-        logger.info(f"Virtual env python: {venv_python}")
+        logger.info(f"System python: {system_python}")
         logger.info(f"mkbio script: {mkbio_script}")
         logger.info(f"rmbio script: {rmbio_script}")
         
@@ -623,9 +628,9 @@ def handle_start_interactive_generation(data):
             emit('terminal_output', {'data': f'Error: NLPAgentsToolbox not found at {nlp_toolbox_dir}\r\n'})
             return
             
-        if not os.path.exists(venv_python):
-            logger.error(f"Virtual environment Python not found at {venv_python}")
-            emit('terminal_output', {'data': f'Error: Virtual environment Python not found at {venv_python}\r\n'})
+        if not os.path.exists(system_python):
+            logger.error(f"System Python not found at {system_python}")
+            emit('terminal_output', {'data': f'Error: System Python not found at {system_python}\r\n'})
             return
             
         if not os.path.exists(mkbio_script):
@@ -676,7 +681,7 @@ def handle_start_interactive_generation(data):
         
         try:
             rmbio_result = subprocess.run(
-                [venv_python, rmbio_script, '-A'],
+                [system_python, rmbio_script, '-A'],
                 cwd=nlp_toolbox_dir,
                 env=env,
                 capture_output=True,
@@ -708,7 +713,7 @@ def handle_start_interactive_generation(data):
         
         # Start the process in the pseudo-terminal
         process = subprocess.Popen(
-            [venv_python, mkbio_script, '-n', str(juror_count)],
+            [system_python, mkbio_script, '-n', str(juror_count)],
             stdin=slave_fd,
             stdout=slave_fd,
             stderr=slave_fd,
@@ -785,7 +790,7 @@ def run_lsbio_phase(session_id):
             return
             
         nlp_toolbox_dir = terminal_info['nlp_toolbox_dir']
-        venv_python = os.path.join(nlp_toolbox_dir, '.venv', 'bin', 'python')
+        system_python = '/usr/local/bin/python3'  # Docker container Python path
         lsbio_script = os.path.join(nlp_toolbox_dir, 'tools', 'lsbio.py')
         
         # Create new pseudo-terminal for lsbio
@@ -808,7 +813,7 @@ def run_lsbio_phase(session_id):
         
         # Start lsbio process
         process = subprocess.Popen(
-            [venv_python, lsbio_script, '-e'],
+            [system_python, lsbio_script, '-e'],
             stdin=slave_fd,
             stdout=slave_fd,
             stderr=slave_fd,
@@ -975,3 +980,60 @@ if __name__ == "__main__":
         if os.path.exists(TEMP_DIR):
             shutil.rmtree(TEMP_DIR)
             logger.info("Cleaned up temporary directory")
+
+@app.route('/debug-files')
+def debug_files():
+    """Debug endpoint to check what files exist in the container"""
+    import os
+    debug_info = {
+        'working_directory': os.getcwd(),
+        'app_directory_contents': [],
+        'backend_exists': False,
+        'nlp_toolbox_exists': False,
+        'tools_exist': False,
+        'python_paths': []
+    }
+    
+    try:
+        debug_info['app_directory_contents'] = os.listdir('/app')
+    except Exception as e:
+        debug_info['app_directory_error'] = str(e)
+    
+    backend_dir = '/app/backend'
+    if os.path.exists(backend_dir):
+        debug_info['backend_exists'] = True
+        try:
+            debug_info['backend_contents'] = os.listdir(backend_dir)
+        except Exception as e:
+            debug_info['backend_error'] = str(e)
+            
+        nlp_toolbox_dir = os.path.join(backend_dir, 'NLPAgentsToolbox')
+        if os.path.exists(nlp_toolbox_dir):
+            debug_info['nlp_toolbox_exists'] = True
+            try:
+                debug_info['nlp_toolbox_contents'] = os.listdir(nlp_toolbox_dir)
+            except Exception as e:
+                debug_info['nlp_toolbox_error'] = str(e)
+                
+            tools_dir = os.path.join(nlp_toolbox_dir, 'tools')
+            if os.path.exists(tools_dir):
+                debug_info['tools_exist'] = True
+                try:
+                    debug_info['tools_contents'] = os.listdir(tools_dir)
+                except Exception as e:
+                    debug_info['tools_error'] = str(e)
+    
+    # Check for Python executables
+    possible_python_paths = [
+        '/usr/local/bin/python3',
+        '/usr/bin/python3',
+        '/bin/python3',
+        'python3',
+        'python'
+    ]
+    
+    for path in possible_python_paths:
+        if os.path.exists(path):
+            debug_info['python_paths'].append(path)
+    
+    return jsonify(debug_info)

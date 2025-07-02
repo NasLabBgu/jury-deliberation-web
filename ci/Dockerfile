@@ -32,8 +32,8 @@ RUN adduser --disabled-password --gecos '' appuser && \
     chown -R appuser:appuser /app
 USER appuser
 
-# Create directories for uploads
-RUN mkdir -p /app/uploads /app/backend
+# Create directories for uploads and ensure backend is accessible
+RUN mkdir -p /app/uploads
 
 # Expose port
 EXPOSE 8080
