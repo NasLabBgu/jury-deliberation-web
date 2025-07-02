@@ -454,12 +454,22 @@ def generate_jurors():
                 # Step 1: Run mkbio.py using the virtual environment Python directly
                 yield f"data: {json.dumps({'status': 'output', 'message': f'Running mkbio.py -n {juror_count}...'})}\n\n"
                 
+                # Prepare environment variables for the subprocess
+                env = os.environ.copy()
+                env['PROJECT_ROOT'] = nlp_toolbox_dir
+                env['BUILD_DIR'] = os.path.join(nlp_toolbox_dir, 'build')
+                env['DATABASE_FILE'] = os.path.join(nlp_toolbox_dir, 'build', 'juror.db')
+                
+                # Ensure build directory exists
+                os.makedirs(env['BUILD_DIR'], exist_ok=True)
+                
                 process = subprocess.Popen(
                     [system_python, mkbio_script, '-n', str(juror_count)],
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     universal_newlines=True,
-                    cwd=nlp_toolbox_dir
+                    cwd=nlp_toolbox_dir,
+                    env=env
                 )
                 
                 # Stream output in real-time
@@ -489,7 +499,8 @@ def generate_jurors():
                     stdout=subprocess.PIPE,
                     stderr=subprocess.PIPE,
                     universal_newlines=True,
-                    cwd=nlp_toolbox_dir
+                    cwd=nlp_toolbox_dir,
+                    env=env
                 )
                 
                 # Stream output in real-time
@@ -657,20 +668,26 @@ def handle_start_interactive_generation(data):
         if os.path.exists(api_key_file):
             with open(api_key_file, 'r') as f:
                 content = f.read().strip()
-                # Extract the API key from the export statement
+                # Handle both export statement format and direct key format
                 if content.startswith("export OPENAI_API_KEY="):
+                    # Extract the API key from the export statement
                     api_key = content.split("'")[1] if "'" in content else content.split("=")[1].strip('"')
-                    env['OPENAI_API_KEY'] = api_key
-                    emit('terminal_output', {'data': 'API key loaded from file\r\n'})
-                    logger.info("API key loaded from file")
                 else:
-                    env['OPENAI_API_KEY'] = content
-                    logger.info("API key loaded from file (direct content)")
+                    # Direct API key content
+                    api_key = content
+                env['OPENAI_API_KEY'] = api_key
+                emit('terminal_output', {'data': 'API key loaded from file\r\n'})
+                logger.info("API key loaded from file")
         elif 'OPENAI_API_KEY' in os.environ:
             # Use environment variable (for Cloud Run deployment)
             env['OPENAI_API_KEY'] = os.environ['OPENAI_API_KEY']
             emit('terminal_output', {'data': 'API key loaded from environment\r\n'})
             logger.info("API key loaded from environment variable")
+        elif 'GOOGLE_API_KEY' in os.environ:
+            # Use Google API key as fallback
+            env['OPENAI_API_KEY'] = os.environ['GOOGLE_API_KEY']
+            emit('terminal_output', {'data': 'API key loaded from Google environment\r\n'})
+            logger.info("API key loaded from GOOGLE_API_KEY environment variable")
         else:
             logger.warning(f"API key not found in file {api_key_file} or environment")
             emit('terminal_output', {'data': 'Warning: No API key found\r\n'})
@@ -741,7 +758,22 @@ def handle_start_interactive_generation(data):
         def read_terminal():
             logger.info("Starting terminal reader thread...")
             try:
+                # Wait for process to complete with timeout
+                start_time = time.time()
+                timeout = 300  # 5 minutes timeout
+                
                 while process.poll() is None:
+                    # Check for timeout
+                    if time.time() - start_time > timeout:
+                        logger.error("Process timed out after 5 minutes")
+                        socketio.emit('terminal_output', {'data': '\r\nProcess timed out after 5 minutes\r\n'}, room=session_id)
+                        try:
+                            process.terminate()
+                            process.wait(timeout=5)
+                        except:
+                            process.kill()
+                        break
+                    
                     # Check if there's data to read
                     ready, _, _ = select.select([master_fd], [], [], 0.1)
                     if ready:
@@ -754,14 +786,78 @@ def handle_start_interactive_generation(data):
                             logger.error(f"OSError reading from terminal: {e}")
                             break
                 
-                logger.info(f"Process finished with return code: {process.returncode}")
+                # Ensure process is finished and get final return code
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    logger.error("Process did not terminate gracefully")
+                    process.kill()
+                    process.wait()
+                
+                return_code = process.returncode
+                logger.info(f"Process finished with return code: {return_code}")
+                
+                # Read any remaining output from the pseudo-terminal
+                try:
+                    # Set non-blocking mode to read any remaining data
+                    import fcntl
+                    flags = fcntl.fcntl(master_fd, fcntl.F_GETFL)
+                    fcntl.fcntl(master_fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+                    
+                    remaining_data = ""
+                    while True:
+                        try:
+                            chunk = os.read(master_fd, 1024).decode('utf-8', errors='ignore')
+                            if not chunk:
+                                break
+                            remaining_data += chunk
+                        except OSError:
+                            break
+                    
+                    if remaining_data:
+                        socketio.emit('terminal_output', {'data': remaining_data}, room=session_id)
+                        logger.info(f"Final output: {remaining_data}")
+                        
+                except Exception as e:
+                    logger.error(f"Error reading final output: {e}")
                 
                 # Process finished, check if we need to run lsbio
-                if process.returncode == 0:
+                if return_code == 0:
                     socketio.emit('terminal_output', {'data': '\r\nmkbio.py completed successfully. Starting lsbio.py...\r\n'}, room=session_id)
                     run_lsbio_phase(session_id)
                 else:
-                    socketio.emit('terminal_output', {'data': f'\r\nmkbio.py failed with return code {process.returncode}\r\n'}, room=session_id)
+                    error_msg = f'\r\nmkbio.py failed with return code {return_code}\r\n'
+                    if return_code is None:
+                        error_msg = '\r\nmkbio.py process crashed or was terminated unexpectedly\r\n'
+                    socketio.emit('terminal_output', {'data': error_msg}, room=session_id)
+                    
+                    # Try to get more error information by running a simpler test
+                    socketio.emit('terminal_output', {'data': 'Attempting to diagnose the issue...\r\n'}, room=session_id)
+                    
+                    try:
+                        # Test if the Python executable works
+                        test_result = subprocess.run([system_python, '--version'], 
+                                                   capture_output=True, text=True, timeout=10)
+                        if test_result.returncode == 0:
+                            socketio.emit('terminal_output', {'data': f'Python version: {test_result.stdout.strip()}\r\n'}, room=session_id)
+                        else:
+                            socketio.emit('terminal_output', {'data': f'Python test failed: {test_result.stderr}\r\n'}, room=session_id)
+                    except Exception as e:
+                        socketio.emit('terminal_output', {'data': f'Python test error: {str(e)}\r\n'}, room=session_id)
+                    
+                    try:
+                        # Test if the script exists and is readable
+                        if os.path.exists(mkbio_script):
+                            socketio.emit('terminal_output', {'data': f'mkbio.py exists at {mkbio_script}\r\n'}, room=session_id)
+                            # Try to read the first few lines
+                            with open(mkbio_script, 'r') as f:
+                                first_lines = ''.join(f.readlines()[:5])
+                            socketio.emit('terminal_output', {'data': f'Script starts with:\r\n{first_lines}\r\n'}, room=session_id)
+                        else:
+                            socketio.emit('terminal_output', {'data': f'mkbio.py NOT FOUND at {mkbio_script}\r\n'}, room=session_id)
+                    except Exception as e:
+                        socketio.emit('terminal_output', {'data': f'Script check error: {str(e)}\r\n'}, room=session_id)
+                    
                     cleanup_terminal(session_id)
                     
             except Exception as e:
@@ -1035,5 +1131,114 @@ def debug_files():
     for path in possible_python_paths:
         if os.path.exists(path):
             debug_info['python_paths'].append(path)
+    
+    return jsonify(debug_info)
+
+@app.route('/debug-nlp-toolbox')
+def debug_nlp_toolbox():
+    """Debug endpoint to test NLPAgentsToolbox components"""
+    debug_info = {
+        'timestamp': time.time(),
+        'working_directory': os.getcwd(),
+        'python_executable_test': {},
+        'mkbio_script_test': {},
+        'environment_variables': {},
+        'directory_structure': {}
+    }
+    
+    # Test Python executable
+    system_python = '/usr/local/bin/python3'
+    try:
+        result = subprocess.run([system_python, '--version'], 
+                              capture_output=True, text=True, timeout=10)
+        debug_info['python_executable_test'] = {
+            'executable': system_python,
+            'exists': os.path.exists(system_python),
+            'version_output': result.stdout.strip() if result.returncode == 0 else None,
+            'version_error': result.stderr.strip() if result.stderr else None,
+            'return_code': result.returncode
+        }
+    except Exception as e:
+        debug_info['python_executable_test']['error'] = str(e)
+    
+    # Test mkbio script
+    backend_dir = os.path.join(os.path.dirname(__file__), 'backend')
+    nlp_toolbox_dir = os.path.join(backend_dir, 'NLPAgentsToolbox')
+    mkbio_script = os.path.join(nlp_toolbox_dir, 'tools', 'mkbio.py')
+    
+    debug_info['mkbio_script_test'] = {
+        'script_path': mkbio_script,
+        'script_exists': os.path.exists(mkbio_script),
+        'nlp_toolbox_exists': os.path.exists(nlp_toolbox_dir),
+        'backend_exists': os.path.exists(backend_dir)
+    }
+    
+    if os.path.exists(mkbio_script):
+        try:
+            with open(mkbio_script, 'r') as f:
+                first_10_lines = ''.join(f.readlines()[:10])
+            debug_info['mkbio_script_test']['first_lines'] = first_10_lines
+        except Exception as e:
+            debug_info['mkbio_script_test']['read_error'] = str(e)
+    
+    # Test environment variables
+    debug_info['environment_variables'] = {
+        'OPENAI_API_KEY': 'SET' if os.environ.get('OPENAI_API_KEY') else 'NOT SET',
+        'OPENAI_API_KEY_LENGTH': len(os.environ.get('OPENAI_API_KEY', '')),
+        'PATH': os.environ.get('PATH', 'Not set'),
+        'PYTHONPATH': os.environ.get('PYTHONPATH', 'Not set'),
+        'BUILD_DIR': os.environ.get('BUILD_DIR', 'Not set'),
+        'API_CENSUS': os.environ.get('API_CENSUS', 'Not set')
+    }
+    
+    # Test directory structure
+    if os.path.exists(nlp_toolbox_dir):
+        try:
+            debug_info['directory_structure']['nlp_toolbox_contents'] = os.listdir(nlp_toolbox_dir)
+            
+            tools_dir = os.path.join(nlp_toolbox_dir, 'tools')
+            if os.path.exists(tools_dir):
+                debug_info['directory_structure']['tools_contents'] = os.listdir(tools_dir)
+                
+            stages_dir = os.path.join(nlp_toolbox_dir, 'stages')
+            if os.path.exists(stages_dir):
+                debug_info['directory_structure']['stages_contents'] = os.listdir(stages_dir)
+                
+        except Exception as e:
+            debug_info['directory_structure']['error'] = str(e)
+    
+    # Test simple Python execution in the nlp_toolbox directory
+    try:
+        simple_test = subprocess.run(
+            [system_python, '-c', 'import sys; print("Python works:", sys.version)'],
+            cwd=nlp_toolbox_dir,
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        debug_info['simple_python_test'] = {
+            'return_code': simple_test.returncode,
+            'stdout': simple_test.stdout,
+            'stderr': simple_test.stderr
+        }
+    except Exception as e:
+        debug_info['simple_python_test'] = {'error': str(e)}
+    
+    # Test mkbio.py help command
+    try:
+        mkbio_help = subprocess.run(
+            [system_python, mkbio_script, '--help'],
+            cwd=nlp_toolbox_dir,
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        debug_info['mkbio_help_test'] = {
+            'return_code': mkbio_help.returncode,
+            'stdout': mkbio_help.stdout[:500] + ('...' if len(mkbio_help.stdout) > 500 else ''),
+            'stderr': mkbio_help.stderr[:500] + ('...' if len(mkbio_help.stderr) > 500 else '')
+        }
+    except Exception as e:
+        debug_info['mkbio_help_test'] = {'error': str(e)}
     
     return jsonify(debug_info)
