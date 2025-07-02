@@ -106,6 +106,12 @@ def upload_files():
         preserved_generated_files = [f['name'] for f in all_files_metadata if f.get('generated', False)]
         logger.info(f"Preserving generated files: {preserved_generated_files}")
         
+        # Clear file metadata for non-preserved files
+        current_metadata = get_all_file_metadata()
+        for filename in list(current_metadata.keys()):
+            if filename not in preserved_generated_files:
+                FILE_METADATA.pop(filename, None)
+        
         # Clear juror directory (except preserved generated files)
         if os.path.exists(JUROR_DIR):
             for filename in os.listdir(JUROR_DIR):
@@ -157,6 +163,9 @@ def upload_files():
                 filepath = os.path.join(target_dir, filename)
                 file.save(filepath)
                 
+                # Store file metadata
+                store_file_metadata(filename, category, weight)
+                
                 logger.info(f"Uploaded: {filepath} (category: {category}, weight: {weight})")
                 
                 results.append({
@@ -178,6 +187,9 @@ def upload_files():
                 filepath = os.path.join(target_dir, filename)
                 
                 if os.path.exists(filepath):
+                    # Store metadata for preserved generated files
+                    store_file_metadata(filename, category, file_metadata['weight'], generated=True)
+                    
                     results.append({
                         'filename': filename,
                         'category': category,
@@ -252,25 +264,107 @@ def run_notebook():
     try:
         # Get parameters from query string
         total_rounds = int(request.args.get('repeat_count', 3))
+        repeat_mode = request.args.get('repeat_mode', 'individual')
         
-        # List uploaded files
-        juror_files = os.listdir(JUROR_DIR) if os.path.exists(JUROR_DIR) else []
-        case_files = os.listdir(CASE_DIR) if os.path.exists(CASE_DIR) else []
+        # Get file metadata from the upload results (stored in session or temp file)
+        # For now, we'll read the files and their categories from the directories
+        juror_files_info = []
+        case_files_info = []
+        
+        # Read juror files with metadata
+        if os.path.exists(JUROR_DIR):
+            for filename in os.listdir(JUROR_DIR):
+                filepath = os.path.join(JUROR_DIR, filename)
+                if os.path.isfile(filepath):
+                    metadata = get_file_metadata(filename)
+                    if metadata['category'] == 'juror':  # Only include files categorized as juror
+                        juror_files_info.append({
+                            'name': filename,
+                            'path': filepath,
+                            'weight': metadata['weight']
+                        })
+        
+        # Read case files with metadata
+        if os.path.exists(CASE_DIR):
+            for filename in os.listdir(CASE_DIR):
+                filepath = os.path.join(CASE_DIR, filename)
+                if os.path.isfile(filepath):
+                    metadata = get_file_metadata(filename)
+                    if metadata['category'] == 'case':  # Only include files categorized as case
+                        case_files_info.append({
+                            'name': filename,
+                            'path': filepath,
+                            'weight': metadata['weight']
+                        })
         
         # Check if we have required files
-        if not juror_files:
+        if not juror_files_info:
             def error_gen():
                 yield f"data: {json.dumps({'status': 'error', 'message': 'No juror files uploaded'})}\n\n"
             return Response(error_gen(), mimetype='text/event-stream')
             
-        if not case_files:
+        if not case_files_info:
             def error_gen():
                 yield f"data: {json.dumps({'status': 'error', 'message': 'No case files uploaded'})}\n\n"
             return Response(error_gen(), mimetype='text/event-stream')
         
-        # Select first available files
-        jury_file_name = juror_files[0]
-        case_file_name = case_files[0]
+        # Generate the execution pairs based on repeat mode
+        def generate_execution_pairs():
+            """Generate juror-case pairs based on repeat mode"""
+            if repeat_mode == 'individual':
+                # Run each unique combination once, ignoring weights
+                pairs = []
+                for juror_file in juror_files_info:
+                    for case_file in case_files_info:
+                        pairs.append({
+                            'juror_file': juror_file,
+                            'case_file': case_file,
+                            'run_number': len(pairs) + 1
+                        })
+                return pairs
+            
+            else:  # overall mode
+                # Use weights to determine frequency of each file
+                import random
+                
+                # Create weighted lists
+                weighted_juror_list = []
+                for juror_file in juror_files_info:
+                    weighted_juror_list.extend([juror_file] * juror_file['weight'])
+                
+                weighted_case_list = []
+                for case_file in case_files_info:
+                    weighted_case_list.extend([case_file] * case_file['weight'])
+                
+                # Generate pairs while trying to maintain uniqueness when possible
+                pairs = []
+                used_combinations = set()
+                
+                for run_num in range(1, total_rounds + 1):
+                    # Try to find a unique combination first
+                    attempts = 0
+                    max_attempts = 50
+                    
+                    while attempts < max_attempts:
+                        juror_file = random.choice(weighted_juror_list)
+                        case_file = random.choice(weighted_case_list)
+                        combo_key = (juror_file['name'], case_file['name'])
+                        
+                        if combo_key not in used_combinations:
+                            used_combinations.add(combo_key)
+                            break
+                        attempts += 1
+                    
+                    # If we couldn't find a unique combination, use the last selected pair
+                    pairs.append({
+                        'juror_file': juror_file,
+                        'case_file': case_file,
+                        'run_number': run_num
+                    })
+                
+                return pairs
+        
+        execution_pairs = generate_execution_pairs()
         
         def generate():
             """Generator function to stream notebook execution results"""
@@ -278,13 +372,33 @@ def run_notebook():
                 # Change to backend directory
                 backend_dir = os.path.join(os.path.dirname(__file__), 'backend')
                 
-                yield f"data: {json.dumps({'status': 'started', 'message': f'Running deliberation with {jury_file_name} and {case_file_name}'})}\n\n"
+                total_pairs = len(execution_pairs)
+                yield f"data: {json.dumps({'status': 'started', 'message': f'Starting {total_pairs} deliberation runs in {repeat_mode} mode'})}\n\n"
                 
-                # Create a custom Python script that imports from the notebook and calls run_deliberation
-                jury_file_path = os.path.join(JUROR_DIR, jury_file_name)
-                case_file_path = os.path.join(CASE_DIR, case_file_name)
+                # Log the execution plan
+                if repeat_mode == 'individual':
+                    yield f"data: {json.dumps({'status': 'output', 'message': f'Running each unique juror-case combination once ({total_pairs} total combinations)'})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'status': 'output', 'message': f'Running {total_rounds} total deliberations with weighted selection'})}\n\n"
                 
-                script_content = f'''
+                # Execute each pair
+                for i, pair in enumerate(execution_pairs):
+                    juror_file = pair['juror_file']
+                    case_file = pair['case_file']
+                    run_number = pair['run_number']
+                    
+                    yield f"data: {json.dumps({'status': 'output', 'message': f'\\n=== Run {run_number}/{total_pairs} ==='})}\n\n"
+                    juror_name = juror_file['name']
+                    case_name = case_file['name']
+                    
+                    yield f"data: {json.dumps({'status': 'output', 'message': f'Juror file: {juror_name}'})}\n\n"
+                    yield f"data: {json.dumps({'status': 'output', 'message': f'Case file: {case_name}'})}\n\n"
+                    
+                    # Create a custom Python script that imports from the notebook and calls run_deliberation
+                    jury_file_path = juror_file['path']
+                    case_file_path = case_file['path']
+                    
+                    script_content = f'''
 import sys
 import os
 
@@ -294,8 +408,8 @@ sys.path.append('{backend_dir}')
 # Change to backend directory to access notebook functions
 os.chdir('{backend_dir}')
 
-print(f"Using jury file: {jury_file_path}")
-print(f"Using case file: {case_file_path}")
+print(f"Run {run_number}: Using jury file: {jury_file_path}")
+print(f"Run {run_number}: Using case file: {case_file_path}")
 
 # Import and execute the notebook cells
 try:
@@ -309,94 +423,113 @@ try:
     print(f"  jury_file='{jury_file_path}'")
     print(f"  case_file='{case_file_path}'")
     print(f"  scenario_number=1")
-    print(f"  total_rounds={total_rounds}")
+    print(f"  total_rounds=1")  # Each execution runs only 1 round
     
     # Call run_deliberation with uploaded files from temp directories
     run_deliberation(
         jury_file="{jury_file_path}",
         case_file="{case_file_path}",
         scenario_number=1,
-        total_rounds={total_rounds},
+        total_rounds=1,  # Each pair runs once
         save_to_file=True
     )
-    print("Deliberation completed successfully!")
+    print(f"Run {run_number} completed successfully!")
     
 except Exception as e:
-    print(f"Error during deliberation: {{e}}")
+    print(f"Error during deliberation run {run_number}: {{e}}")
     import traceback
     traceback.print_exc()
 '''
-                
-                # Create a Python file with the notebook functions
-                notebook_functions_file = os.path.join(backend_dir, 'run_notebook_functions.py')
-                yield f"data: {json.dumps({'status': 'output', 'message': 'Extracting notebook functions...'})}\n\n"
-                
-                # Extract Python code from the notebook
-                import json as py_json
-                with open(os.path.join(backend_dir, 'langgraph_jury_deliberation.ipynb'), 'r') as f:
-                    notebook = py_json.load(f)
-                
-                python_code = []
-                for cell in notebook['cells']:
-                    if cell['cell_type'] == 'code':
-                        cell_source = ''.join(cell['source'])
-                        # Filter out notebook-specific commands
-                        lines = cell_source.split('\n')
-                        filtered_lines = []
-                        for line in lines:
-                            # Skip shell commands (starting with !) and empty lines
-                            if not line.strip().startswith('!') and line.strip():
-                                filtered_lines.append(line)
+                    
+                    # Create a Python file with the notebook functions (only once)
+                    notebook_functions_file = os.path.join(backend_dir, 'run_notebook_functions.py')
+                    if i == 0:  # Only create on first run
+                        yield f"data: {json.dumps({'status': 'output', 'message': 'Extracting notebook functions...'})}\n\n"
                         
-                        if filtered_lines:  # Only add if there's actual Python code
-                            python_code.append('\n'.join(filtered_lines))
+                        # Extract Python code from the notebook
+                        import json as py_json
+                        with open(os.path.join(backend_dir, 'langgraph_jury_deliberation.ipynb'), 'r') as f:
+                            notebook = py_json.load(f)
+                        
+                        python_code = []
+                        for cell in notebook['cells']:
+                            if cell['cell_type'] == 'code':
+                                cell_source = ''.join(cell['source'])
+                                # Filter out notebook-specific commands
+                                lines = cell_source.split('\n')
+                                filtered_lines = []
+                                for line in lines:
+                                    # Skip shell commands (starting with !) and empty lines
+                                    if not line.strip().startswith('!') and line.strip():
+                                        filtered_lines.append(line)
+                                
+                                if filtered_lines:  # Only add if there's actual Python code
+                                    python_code.append('\n'.join(filtered_lines))
+                        
+                        # Write extracted code to a file
+                        with open(notebook_functions_file, 'w') as f:
+                            f.write('\n\n'.join(python_code))
+                        
+                        yield f"data: {json.dumps({'status': 'output', 'message': 'Notebook functions extracted successfully'})}\n\n"
+                    
+                    # Write the script to a temporary file
+                    script_file = os.path.join(backend_dir, f'temp_deliberation_script_run_{run_number}.py')
+                    with open(script_file, 'w') as f:
+                        f.write(script_content)
+                    
+                    yield f"data: {json.dumps({'status': 'output', 'message': f'Executing run {run_number}...'})}\n\n"
+                    
+                    # Execute the script and capture output
+                    process = subprocess.Popen(
+                        ['python', f'temp_deliberation_script_run_{run_number}.py'],
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        universal_newlines=True,
+                        cwd=backend_dir
+                    )
+                    
+                    # Stream output line by line
+                    for line in iter(process.stdout.readline, ''):
+                        if line:
+                            yield f"data: {json.dumps({'status': 'output', 'message': line.strip()})}\n\n"
+                    
+                    # Wait for process to complete
+                    process.wait()
+                    
+                    # Clean up temporary script file
+                    try:
+                        os.remove(script_file)
+                    except:
+                        pass
+                    
+                    if process.returncode == 0:
+                        yield f"data: {json.dumps({'status': 'output', 'message': f'Run {run_number} completed successfully'})}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'status': 'error', 'message': f'Run {run_number} failed with code {process.returncode}'})}\n\n"
+                        # Continue with next runs even if one fails
                 
-                # Write extracted code to a file
-                with open(notebook_functions_file, 'w') as f:
-                    f.write('\n\n'.join(python_code))
-                
-                yield f"data: {json.dumps({'status': 'output', 'message': 'Notebook functions extracted successfully'})}\n\n"
-                
-                # Write the script to a temporary file
-                script_file = os.path.join(backend_dir, 'temp_deliberation_script.py')
-                with open(script_file, 'w') as f:
-                    f.write(script_content)
-                
-                yield f"data: {json.dumps({'status': 'output', 'message': 'Script created, starting execution...'})}\n\n"
-                
-                # Execute the script and capture output
-                process = subprocess.Popen(
-                    ['python', 'temp_deliberation_script.py'],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                    universal_newlines=True,
-                    cwd=backend_dir
-                )
-                
-                # Stream output line by line
-                for line in iter(process.stdout.readline, ''):
-                    if line:
-                        yield f"data: {json.dumps({'status': 'output', 'message': line.strip()})}\n\n"
-                
-                # Wait for process to complete
-                process.wait()
-                
-                # Clean up temporary files
+                # Clean up notebook functions file
                 try:
-                    os.remove(script_file)
                     os.remove(notebook_functions_file)
                 except:
                     pass
                 
-                if process.returncode == 0:
-                    yield f"data: {json.dumps({'status': 'completed', 'message': 'Deliberation completed successfully'})}\n\n"
-                else:
-                    yield f"data: {json.dumps({'status': 'error', 'message': f'Deliberation failed with code {process.returncode}'})}\n\n"
+                yield f"data: {json.dumps({'status': 'completed', 'message': f'All {total_pairs} deliberation runs completed'})}\n\n"
                         
             except Exception as e:
                 yield f"data: {json.dumps({'status': 'error', 'message': f'General error: {str(e)}'})}\n\n"
         
         return Response(generate(), mimetype='text/event-stream', headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+            'X-Accel-Buffering': 'no'
+        })
+        
+    except Exception as e:
+        def error_gen():
+            yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
+        return Response(error_gen(), mimetype='text/event-stream', headers={
             'Cache-Control': 'no-cache',
             'Connection': 'keep-alive',
             'Access-Control-Allow-Origin': '*',
@@ -1048,6 +1181,9 @@ def move_generated_file(session_id):
             jurors_yaml_dest = os.path.join(JUROR_DIR, filename)
             shutil.copy2(jurors_yaml_source, jurors_yaml_dest)
             
+            # Store metadata for generated file (default to juror category with weight 100)
+            store_file_metadata(filename, 'juror', 100, generated=True)
+            
             socketio.emit('terminal_output', {'data': f'Generated jurors saved as {filename}\r\n'}, room=session_id)
             socketio.emit('generation_completed', {'filename': filename, 'count': juror_count}, room=session_id)
         else:
@@ -1106,6 +1242,29 @@ def cleanup_terminal(session_id):
                 pass
     except Exception as e:
         logger.error(f"Error cleaning up terminal: {e}")
+
+# Global storage for file metadata (in production, use a database or session storage)
+FILE_METADATA = {}
+
+def store_file_metadata(filename, category, weight, generated=False):
+    """Store file metadata for later retrieval"""
+    FILE_METADATA[filename] = {
+        'category': category,
+        'weight': weight,
+        'generated': generated
+    }
+
+def get_file_metadata(filename):
+    """Get file metadata"""
+    return FILE_METADATA.get(filename, {'category': 'juror', 'weight': 100, 'generated': False})
+
+def get_all_file_metadata():
+    """Get all file metadata"""
+    return FILE_METADATA.copy()
+
+def clear_file_metadata():
+    """Clear all file metadata"""
+    FILE_METADATA.clear()
 
 # Add startup logging for debugging
 logger.info(f"Flask app starting - Environment: {os.environ.get('FLASK_ENV', 'production')}")
