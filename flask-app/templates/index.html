@@ -448,7 +448,14 @@
         
         function initializeSocket() {
             if (!socket) {
-                socket = io();
+                socket = io({
+                    timeout: 60000,          // 60 second connection timeout
+                    pingTimeout: 60000,      // 60 second ping timeout
+                    pingInterval: 25000,     // 25 second ping interval
+                    reconnection: true,      // Enable automatic reconnection
+                    reconnectionAttempts: 5, // Try 5 times to reconnect
+                    reconnectionDelay: 1000  // Wait 1 second between attempts
+                });
                 
                 socket.on('terminal_output', function(data) {
                     const terminalOutput = document.getElementById('terminalOutput');

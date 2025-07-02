@@ -42,5 +42,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=30s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8080/health || exit 1
 
-# Run the application with Gunicorn using the WSGI entry point
-CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--workers", "1", "--timeout", "300", "--graceful-timeout", "300", "--keep-alive", "2", "--max-requests", "1000", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info", "wsgi:application"]
+# Run the application with Gunicorn using eventlet for WebSocket support
+CMD ["gunicorn", "--bind", "0.0.0.0:8080", "--worker-class", "eventlet", "--workers", "1", "--timeout", "300", "--graceful-timeout", "300", "--keep-alive", "2", "--max-requests", "1000", "--access-logfile", "-", "--error-logfile", "-", "--log-level", "info", "wsgi:application"]

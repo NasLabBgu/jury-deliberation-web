@@ -45,7 +45,10 @@ app = Flask(__name__)
 socketio = SocketIO(app, 
                    cors_allowed_origins="*",
                    logger=True,
-                   engineio_logger=False)
+                   engineio_logger=False,
+                   async_mode='eventlet',  # Explicitly use eventlet for async support
+                   ping_timeout=60,
+                   ping_interval=25)
 logger.info("Flask app instance created successfully")
 
 # Production-safe configuration
