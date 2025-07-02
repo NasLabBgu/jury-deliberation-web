@@ -25,3 +25,7 @@ temp_*
 deliberation_*.md
 run_notebook_functions.py
 temp_deliberation_script.py
+
+# NLPAgent files
+juror.db
+jurors.yaml

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <title>Interactive Table</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
     <style>
         table {
             width: 85%;
@@ -55,6 +56,18 @@
         main {
             background: transparent !important;
         }
+        
+        /* File row highlight animation */
+        .file-row-highlight {
+            background-color: #ffff00;
+            animation: fadeOutHighlight 3s ease-out forwards;
+        }
+        
+        @keyframes fadeOutHighlight {
+            0% { background-color: #ffff00; }
+            33% { background-color: #ffff00; }
+            100% { background-color: transparent; }
+        }
        
     </style>
 </head>
@@ -105,13 +118,55 @@
                 <h3>Generate Jurors</h3>
                 <!-- <button aria-label="Close" rel="prev" onclick="closeGenerateModal()"></button> -->
             </header>
-            <main>
-                <p>How many jurors would you like to generate?</p>
-                <input type="number" id="modalJurorCount" min="1" max="20" value="5">
+            <main id="modalContent">
+                <div id="inputSection">
+                    <p>How many jurors would you like to generate?</p>
+                    <input type="number" id="modalJurorCount" min="1" max="20" value="5">
+                    <div style="margin-top: 1rem; padding: 0.5rem; background: transparent; border: 1px solid var(--pico-muted-border-color); border-radius: 4px; font-size: 0.9em;">
+                        <strong>Note:</strong> The online generation tool is in beta testing. <br>
+                        Some features such as customizable presented distribution are not available online. 
+                    </div>
+                </div>
+                <div id="terminalSection" style="display: none;">
+                    <div id="terminalOutput" style="
+                        background: #000;
+                        color: #fff;
+                        font-family: monospace;
+                        padding: 1rem;
+                        height: 280px;
+                        overflow-y: auto;
+                        border-radius: 4px;
+                        white-space: pre-wrap;
+                        font-size: 14px;
+                    "></div>
+                    <div style="display: flex; margin-top: 0.5rem;">
+                        <input type="text" id="terminalInput" placeholder="Type your response here..." style="
+                            flex: 1;
+                            background: #333;
+                            color: #fff;
+                            border: 1px solid #555;
+                            padding: 0.5rem;
+                            font-family: monospace;
+                            border-radius: 4px;
+                        ">
+                        <button onclick="sendTerminalInput()" style="
+                            margin-left: 0.5rem;
+                            background: #ffffff;
+                            color: #000;
+                            border: none;
+                            padding: 0.5rem 1rem;
+                            border-radius: 4px;
+                            cursor: pointer;
+                        ">Send</button>
+                    </div>
+                    <div style="margin-top: 0.5rem; font-size: 0.8em; color: #666;">
+                        Common responses: <kbd>A</kbd> (Accept), <kbd>n</kbd> (New suggestion), <kbd>e</kbd> (Enter custom), <kbd>y</kbd>/<kbd>N</kbd> (Yes/No)
+                    </div>
+                </div>
             </main>
-            <footer>
+            <footer id="modalFooter">
                 <button role="button" class="secondary" onclick="closeGenerateModal()">Cancel</button>
-                <button role="button" onclick="generateJurors()">Generate</button>
+                <button role="button" id="generateConfirmButton" onclick="confirmGenerateJurors()">Generate</button>
             </footer>
         </article>
     </dialog>
@@ -119,6 +174,7 @@
     <script>
         const state = {};
         let uploadedFiles = []; // Store file objects, not just filenames
+        let lastGeneratedFilename = null; // Track the last generated file for highlighting
 
         document.addEventListener('DOMContentLoaded', function() {
             console.log('DOM loaded, setting up file upload');
@@ -275,17 +331,259 @@
             const modal = document.getElementById('generateModal');
             if (modal) {
                 modal.close();
+                // Reset modal to initial state
+                resetGenerateModal();
+                // Highlight the generated file row if available
+                highlightGeneratedFileRow();
             }
         }
 
-        function generateJurors() {
+        function resetGenerateModal() {
+            const inputSection = document.getElementById('inputSection');
+            const terminalSection = document.getElementById('terminalSection');
+            const modalFooter = document.getElementById('modalFooter');
+            const terminalOutput = document.getElementById('terminalOutput');
+            const terminalInput = document.getElementById('terminalInput');
+            const sendButton = terminalInput?.nextElementSibling;
+            
+            if (inputSection) inputSection.style.display = 'block';
+            if (terminalSection) terminalSection.style.display = 'none';
+            if (terminalOutput) terminalOutput.innerHTML = '';
+            
+            // Reset terminal input state
+            if (terminalInput) {
+                terminalInput.style.display = 'block';
+                terminalInput.disabled = false;
+                terminalInput.value = '';
+            }
+            if (sendButton) {
+                sendButton.style.display = 'block';
+            }
+            
+            // Reset footer buttons
+            if (modalFooter) {
+                modalFooter.innerHTML = `
+                    <button role="button" class="secondary" onclick="closeGenerateModal()">Cancel</button>
+                    <button role="button" id="generateConfirmButton" onclick="confirmGenerateJurors()">Generate</button>
+                `;
+            }
+            
+            // Disconnect socket if connected
+            if (socket) {
+                socket.disconnect();
+                socket = null;
+            }
+        }
+
+        function confirmGenerateJurors() {
             const jurorCount = document.getElementById('modalJurorCount').value;
-            console.log(`Generate ${jurorCount} jurors - functionality not implemented yet`);
             
-            // TODO: Implement juror generation functionality here
-            alert(`Generating ${jurorCount} jurors - functionality coming soon!`);
+            // Switch to terminal view
+            const inputSection = document.getElementById('inputSection');
+            const terminalSection = document.getElementById('terminalSection');
+            const modalFooter = document.getElementById('modalFooter');
             
-            closeGenerateModal();
+            if (inputSection) inputSection.style.display = 'none';
+            if (terminalSection) {
+                terminalSection.style.display = 'block';
+                // Focus the terminal input field
+                setTimeout(() => {
+                    const terminalInput = document.getElementById('terminalInput');
+                    if (terminalInput) terminalInput.focus();
+                }, 100);
+            }
+            
+            // Update footer to show only close button
+            if (modalFooter) {
+                modalFooter.innerHTML = `
+                    <button role="button" class="secondary" onclick="closeGenerateModal()">Cancel Generation</button>
+                `;
+            }
+            
+            // Start the generation process
+            generateJurors(jurorCount);
+        }
+
+        // WebSocket connection for interactive terminal
+        let socket = null;
+        
+        function processAnsiEscapes(text) {
+            // Convert ANSI escape sequences to HTML spans with colors
+            const ansiMap = {
+                // Reset
+                '0': 'color: #fff',
+                // Text colors
+                '30': 'color: #000', // black
+                '31': 'color: #ff0000', // red
+                '32': 'color: #00ff00', // green
+                '33': 'color: #ffff00', // yellow
+                '34': 'color: #0000ff', // blue
+                '35': 'color: #ff00ff', // magenta
+                '36': 'color: #00ffff', // cyan
+                '37': 'color: #fff', // white
+                // Bright colors
+                '90': 'color: #808080', // bright black (gray)
+                '91': 'color: #ff6666', // bright red
+                '92': 'color: #66ff66', // bright green
+                '93': 'color: #ffff66', // bright yellow
+                '94': 'color: #6666ff', // bright blue
+                '95': 'color: #ff66ff', // bright magenta
+                '96': 'color: #66ffff', // bright cyan
+                '97': 'color: #ffffff'  // bright white
+            };
+            
+            // Replace ANSI escape sequences with HTML spans
+            return text.replace(/\x1b\[([0-9;]*)m/g, function(match, codes) {
+                if (!codes) return '</span>';
+                
+                const codeList = codes.split(';');
+                const styles = codeList.map(code => ansiMap[code]).filter(style => style);
+                
+                if (styles.length > 0) {
+                    return `<span style="${styles.join('; ')}">`;
+                }
+                return '';
+            });
+        }
+        
+        function initializeSocket() {
+            if (!socket) {
+                socket = io();
+                
+                socket.on('terminal_output', function(data) {
+                    const terminalOutput = document.getElementById('terminalOutput');
+                    if (terminalOutput) {
+                        // Process ANSI escape sequences and append as HTML
+                        const processedText = processAnsiEscapes(data.data);
+                        terminalOutput.innerHTML += processedText;
+                        terminalOutput.scrollTop = terminalOutput.scrollHeight;
+                    }
+                });
+                
+                socket.on('generation_completed', function(data) {
+                    const terminalOutput = document.getElementById('terminalOutput');
+                    if (terminalOutput) {
+                        terminalOutput.innerHTML += `\n\n<span style="color: white">═══════════════════════════════════════</span>\n`;
+                        terminalOutput.innerHTML += `<span style="color: white">✓ GENERATION COMPLETED SUCCESSFULLY!</span>\n`;
+                        terminalOutput.innerHTML += `<span style="color: #00ff00">Generated ${data.count} jurors\n`;
+                        if (data.filename) {
+                            terminalOutput.innerHTML += `Saved as: ${data.filename}\n`;
+                        }
+                        terminalOutput.innerHTML += `═══════════════════════════════════════</span>\n`;
+                        terminalOutput.scrollTop = terminalOutput.scrollHeight;
+                    }
+                    
+                    if (data.filename) {
+                        lastGeneratedFilename = data.filename; // Store for highlighting later
+                        addGeneratedFileToList(data.filename);
+                    }
+                    
+                    // Hide terminal input since generation is complete
+                    const terminalInput = document.getElementById('terminalInput');
+                    const sendButton = terminalInput?.nextElementSibling;
+                    if (terminalInput) {
+                        terminalInput.style.display = 'none';
+                        terminalInput.disabled = true;
+                    }
+                    if (sendButton) {
+                        sendButton.style.display = 'none';
+                    }
+                    
+                    // Update footer to show close button
+                    const modalFooter = document.getElementById('modalFooter');
+                    if (modalFooter) {
+                        modalFooter.innerHTML = `
+                            <button role="button" onclick="closeGenerateModal()">Close</button>
+                        `;
+                    }
+                });
+                
+                socket.on('connect', function() {
+                    console.log('Connected to server');
+                    const terminalOutput = document.getElementById('terminalOutput');
+                    if (terminalOutput && terminalOutput.innerHTML.includes('Connecting to interactive terminal')) {
+                        terminalOutput.innerHTML += `<span style="color: #00ff00">Connected! Starting generation...</span>\n`;
+                    }
+                });
+                
+                socket.on('disconnect', function() {
+                    console.log('Disconnected from server');
+                    const terminalOutput = document.getElementById('terminalOutput');
+                    if (terminalOutput) {
+                        terminalOutput.innerHTML += `\n<span style="color: #ff6666">[CONNECTION LOST] Socket disconnected</span>\n`;
+                    }
+                });
+                
+                socket.on('connect_error', function(error) {
+                    console.error('Connection error:', error);
+                    const terminalOutput = document.getElementById('terminalOutput');
+                    if (terminalOutput) {
+                        terminalOutput.innerHTML += `\n<span style="color: #ff6666">[ERROR] Connection failed: ${error}</span>\n`;
+                    }
+                });
+            }
+        }
+
+        function generateJurors(jurorCount) {
+            const terminalOutput = document.getElementById('terminalOutput');
+            if (!terminalOutput) return;
+            
+            // Initialize socket connection
+            initializeSocket();
+            
+            terminalOutput.innerHTML = `<span style="color: #00ffff">Connecting to interactive terminal...</span>\n`;
+            
+            // Start the interactive generation process
+            socket.emit('start_interactive_generation', {
+                count: parseInt(jurorCount)
+            });
+        }
+        
+        function sendTerminalInput() {
+            const terminalInput = document.getElementById('terminalInput');
+            if (!terminalInput || !socket) return;
+            
+            const input = terminalInput.value;
+            // Allow empty input (just pressing Enter is valid for some prompts)
+            // Send input to server
+            socket.emit('terminal_input', {
+                input: input + '\n'  // Add newline
+            });
+            
+            // Clear input field
+            terminalInput.value = '';
+        }
+        
+        // Allow sending input with Enter key
+        document.addEventListener('DOMContentLoaded', function() {
+            const terminalInput = document.getElementById('terminalInput');
+            if (terminalInput) {
+                terminalInput.addEventListener('keypress', function(e) {
+                    if (e.key === 'Enter') {
+                        sendTerminalInput();
+                    }
+                });
+            }
+        });
+
+        function addGeneratedFileToList(filename) {
+            // Create a file object representation for the generated file
+            const fileObj = {
+                file: null, // No actual File object for generated files
+                name: filename,
+                generated: true
+            };
+            
+            // Remove "no files" row if present
+            removeNoFilesRow();
+            
+            // Add file row FIRST (which will also add to uploadedFiles)
+            addFileRow(fileObj);
+            
+            // Update row visibility
+            updateRowVisibility();
+            
+            console.log(`Generated file ${filename} added to file list`);
         }
 
         // Close modal when clicking outside of it (backdrop click)
@@ -410,6 +708,9 @@
                 // Create FormData to send actual files
                 const formData = new FormData();
                 
+                // Collect all file metadata (including generated files)
+                const allFileMetadata = [];
+                
                 // Add files and their metadata
                 uploadedFiles.forEach(fileObj => {
                     const radioButtons = document.querySelectorAll(`input[name="category_${fileObj.name}"]:checked`);
@@ -418,13 +719,26 @@
                     const weightInput = document.getElementById(`weight_${fileObj.name}`);
                     const weight = weightInput ? parseInt(weightInput.value) || 100 : 100;
                     
-                    // Add the actual file
-                    formData.append('files', fileObj.file);
-                    // Add metadata
-                    formData.append('categories', category);
-                    formData.append('weights', weight.toString());
+                    // Add to metadata list
+                    allFileMetadata.push({
+                        name: fileObj.name,
+                        category: category,
+                        weight: weight,
+                        generated: fileObj.generated || false
+                    });
+                    
+                    // Only add actual file objects (not generated files)
+                    if (fileObj.file && !fileObj.generated) {
+                        formData.append('files', fileObj.file);
+                        formData.append('categories', category);
+                        formData.append('weights', weight.toString());
+                    }
                 });
 
+                // Add metadata for all files (including generated ones)
+                formData.append('allFilesMetadata', JSON.stringify(allFileMetadata));
+
+                // Always send the request (even if no new files) to update metadata
                 const response = await fetch('/upload', {
                     method: 'POST',
                     body: formData
@@ -532,6 +846,31 @@
             } catch (error) {
                 console.error('Run error:', error);
             }
+        }
+
+        function highlightGeneratedFileRow() {
+            if (!lastGeneratedFilename) {
+                return;
+            }
+            
+            // Find the row with the generated filename
+            const rows = document.querySelectorAll('#mainTable tbody tr[data-filename]');
+            const targetRow = Array.from(rows).find(row => 
+                row.getAttribute('data-filename') === lastGeneratedFilename
+            );
+            
+            if (targetRow) {
+                // Add highlight class - CSS animation will handle the fade
+                targetRow.classList.add('file-row-highlight');
+                
+                // Remove class after animation completes (3s animation + small buffer)
+                setTimeout(() => {
+                    targetRow.classList.remove('file-row-highlight');
+                }, 3100);
+            }
+            
+            // Clear the stored filename after highlighting
+            lastGeneratedFilename = null;
         }
     </script>
 </body>

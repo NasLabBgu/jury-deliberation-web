@@ -7,8 +7,13 @@ import threading
 import queue
 import time
 import logging
+import pty
+import select
+import termios
+import fcntl
 from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, jsonify, Response
+from flask_socketio import SocketIO, emit
 from dotenv import load_dotenv
 
 # Load environment variables
@@ -37,6 +42,7 @@ logger.info(f"Python path: {os.getcwd()}")
 logger.info(f"Environment variables: PORT={os.environ.get('PORT')}, HOST={os.environ.get('HOST')}")
 
 app = Flask(__name__)
+socketio = SocketIO(app, cors_allowed_origins="*")
 logger.info("Flask app instance created successfully")
 
 # Production-safe configuration
@@ -77,15 +83,49 @@ def health_check():
 @app.route("/upload", methods=["POST"])
 def upload_files():
     try:
-        # Check if the request contains files
-        if 'files' not in request.files:
-            logger.warning("Upload attempt with no files")
-            return jsonify({'error': 'No files provided'}), 400
+        # Get additional data about categories and weights
+        categories = request.form.getlist('categories')
+        weights = request.form.getlist('weights')
+        all_files_metadata_str = request.form.get('allFilesMetadata', '[]')
         
-        files = request.files.getlist('files')
-        if not files or all(f.filename == '' for f in files):
-            logger.warning("Upload attempt with empty files")
-            return jsonify({'error': 'No files selected'}), 400
+        try:
+            all_files_metadata = json.loads(all_files_metadata_str)
+        except:
+            all_files_metadata = []
+        
+        # Clear existing files first, but preserve generated files that are still referenced
+        logger.info("Clearing existing files...")
+        
+        # Get list of generated files that should be preserved
+        preserved_generated_files = [f['name'] for f in all_files_metadata if f.get('generated', False)]
+        logger.info(f"Preserving generated files: {preserved_generated_files}")
+        
+        # Clear juror directory (except preserved generated files)
+        if os.path.exists(JUROR_DIR):
+            for filename in os.listdir(JUROR_DIR):
+                if filename not in preserved_generated_files:
+                    filepath = os.path.join(JUROR_DIR, filename)
+                    if os.path.isfile(filepath):
+                        os.remove(filepath)
+                        logger.info(f"Deleted: {filepath}")
+                else:
+                    logger.info(f"Preserved generated file: {filename}")
+        
+        # Clear case directory (except preserved generated files)
+        if os.path.exists(CASE_DIR):
+            for filename in os.listdir(CASE_DIR):
+                if filename not in preserved_generated_files:
+                    filepath = os.path.join(CASE_DIR, filename)
+                    if os.path.isfile(filepath):
+                        os.remove(filepath)
+                        logger.info(f"Deleted: {filepath}")
+                else:
+                    logger.info(f"Preserved generated file: {filename}")
+        
+        logger.info("All existing files cleared (except preserved generated files).")
+        
+        # Check if the request contains files
+        files = request.files.getlist('files') if 'files' in request.files else []
         
         # Validate file types for security
         allowed_extensions = {'.yaml', '.yml', '.txt'}
@@ -95,31 +135,6 @@ def upload_files():
                 if ext not in allowed_extensions:
                     logger.warning(f"Rejected file with invalid extension: {file.filename}")
                     return jsonify({'error': f'Invalid file type: {ext}. Only .yaml, .yml, and .txt files are allowed.'}), 400
-        
-        # Get additional data about categories and weights
-        categories = request.form.getlist('categories')
-        weights = request.form.getlist('weights')
-        
-        # Clear existing files first
-        logger.info("Clearing existing files...")
-        
-        # Clear juror directory
-        if os.path.exists(JUROR_DIR):
-            for filename in os.listdir(JUROR_DIR):
-                filepath = os.path.join(JUROR_DIR, filename)
-                if os.path.isfile(filepath):
-                    os.remove(filepath)
-                    logger.info(f"Deleted: {filepath}")
-        
-        # Clear case directory
-        if os.path.exists(CASE_DIR):
-            for filename in os.listdir(CASE_DIR):
-                filepath = os.path.join(CASE_DIR, filename)
-                if os.path.isfile(filepath):
-                    os.remove(filepath)
-                    logger.info(f"Deleted: {filepath}")
-        
-        logger.info("All existing files cleared.")
         
         results = []
         
@@ -146,11 +161,39 @@ def upload_files():
                     'status': 'uploaded'
                 })
         
+        # Add preserved generated files to results
+        for file_metadata in all_files_metadata:
+            if file_metadata.get('generated', False):
+                filename = file_metadata['name']
+                category = file_metadata['category']
+                
+                # Check if file exists in the appropriate directory
+                target_dir = JUROR_DIR if category == 'juror' else CASE_DIR
+                filepath = os.path.join(target_dir, filename)
+                
+                if os.path.exists(filepath):
+                    results.append({
+                        'filename': filename,
+                        'category': category,
+                        'weight': file_metadata['weight'],
+                        'path': filepath,
+                        'status': 'preserved_generated'
+                    })
+                    logger.info(f"Preserved generated file: {filepath} (category: {category})")
+        
+        total_files = len(results)
+        uploaded_count = len([r for r in results if r['status'] == 'uploaded'])
+        preserved_count = len([r for r in results if r['status'] == 'preserved_generated'])
+        
+        message = f'Uploaded {uploaded_count} new files'
+        if preserved_count > 0:
+            message += f' and preserved {preserved_count} generated files'
+        
         return jsonify({
             'success': True,
             'uploaded_files': results,
             'temp_dir': TEMP_DIR,
-            'message': f'Cleared existing files and uploaded {len(results)} new files'
+            'message': message
         })
         
     except Exception as e:
@@ -350,12 +393,159 @@ except Exception as e:
         return Response(generate(), mimetype='text/event-stream', headers={
             'Cache-Control': 'no-cache',
             'Connection': 'keep-alive',
-            'Access-Control-Allow-Origin': '*'
+            'Access-Control-Allow-Origin': '*',
+            'X-Accel-Buffering': 'no'
         })
         
     except Exception as e:
         def error_gen():
             yield f"data: {json.dumps({'status': 'error', 'message': str(e)})}\n\n"
+        return Response(error_gen(), mimetype='text/event-stream', headers={
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Access-Control-Allow-Origin': '*',
+            'X-Accel-Buffering': 'no'
+        })
+
+@app.route("/generate_jurors", methods=["GET"])
+def generate_jurors():
+    """Generate jurors using NLPAgentsToolbox and stream the output"""
+    try:
+        juror_count = request.args.get('count', 5, type=int)
+        logger.info(f"Starting juror generation for {juror_count} jurors")
+        
+        def generate():
+            try:
+                logger.info("Generator function started")
+                # Get the backend directory path (where NLPAgentsToolbox should be)
+                backend_dir = os.path.join(os.path.dirname(__file__), 'backend')
+                nlp_toolbox_dir = os.path.join(backend_dir, 'NLPAgentsToolbox')
+                venv_python = os.path.join(nlp_toolbox_dir, '.venv', 'bin', 'python')
+                mkbio_script = os.path.join(nlp_toolbox_dir, 'tools', 'mkbio.py')
+                lsbio_script = os.path.join(nlp_toolbox_dir, 'tools', 'lsbio.py')
+                
+                yield f"data: {json.dumps({'status': 'started', 'message': f'Starting juror generation for {juror_count} jurors...'})}\n\n"
+                
+                # Check if NLPAgentsToolbox exists
+                if not os.path.exists(nlp_toolbox_dir):
+                    yield f"data: {json.dumps({'status': 'error', 'message': f'NLPAgentsToolbox not found at {nlp_toolbox_dir}'})}\n\n"
+                    return
+                
+                # Check if virtual environment Python exists
+                if not os.path.exists(venv_python):
+                    yield f"data: {json.dumps({'status': 'error', 'message': f'Virtual environment Python not found at {venv_python}'})}\n\n"
+                    return
+                
+                # Check if scripts exist
+                if not os.path.exists(mkbio_script):
+                    yield f"data: {json.dumps({'status': 'error', 'message': f'mkbio.py not found at {mkbio_script}'})}\n\n"
+                    return
+                    
+                if not os.path.exists(lsbio_script):
+                    yield f"data: {json.dumps({'status': 'error', 'message': f'lsbio.py not found at {lsbio_script}'})}\n\n"
+                    return
+                
+                # Step 1: Run mkbio.py using the virtual environment Python directly
+                yield f"data: {json.dumps({'status': 'output', 'message': f'Running mkbio.py -n {juror_count}...'})}\n\n"
+                
+                process = subprocess.Popen(
+                    [venv_python, mkbio_script, '-n', str(juror_count)],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    universal_newlines=True,
+                    cwd=nlp_toolbox_dir
+                )
+                
+                # Stream output in real-time
+                while True:
+                    output = process.stdout.readline()
+                    if output == '' and process.poll() is not None:
+                        break
+                    if output:
+                        yield f"data: {json.dumps({'status': 'output', 'message': output.strip()})}\n\n"
+                
+                # Get any remaining stderr
+                stderr_output = process.stderr.read()
+                if stderr_output:
+                    yield f"data: {json.dumps({'status': 'output', 'message': f'mkbio stderr: {stderr_output.strip()}'})}\n\n"
+                
+                if process.returncode != 0:
+                    yield f"data: {json.dumps({'status': 'error', 'message': f'mkbio.py failed with return code {process.returncode}'})}\n\n"
+                    return
+                
+                yield f"data: {json.dumps({'status': 'output', 'message': 'mkbio.py completed successfully'})}\n\n"
+                
+                # Step 2: Run lsbio.py -e using the virtual environment Python directly
+                yield f"data: {json.dumps({'status': 'output', 'message': 'Running lsbio.py -e...'})}\n\n"
+                
+                process = subprocess.Popen(
+                    [venv_python, lsbio_script, '-e'],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    universal_newlines=True,
+                    cwd=nlp_toolbox_dir
+                )
+                
+                # Stream output in real-time
+                while True:
+                    output = process.stdout.readline()
+                    if output == '' and process.poll() is not None:
+                        break
+                    if output:
+                        yield f"data: {json.dumps({'status': 'output', 'message': output.strip()})}\n\n"
+                
+                # Get any remaining stderr
+                stderr_output = process.stderr.read()
+                if stderr_output:
+                    yield f"data: {json.dumps({'status': 'output', 'message': f'lsbio stderr: {stderr_output.strip()}'})}\n\n"
+                
+                if process.returncode != 0:
+                    yield f"data: {json.dumps({'status': 'error', 'message': f'lsbio.py failed with return code {process.returncode}'})}\n\n"
+                    return
+                    
+                yield f"data: {json.dumps({'status': 'output', 'message': 'lsbio.py completed successfully'})}\n\n"
+                
+                # Step 3: Move jurors.yaml to temp directory
+                jurors_yaml_source = os.path.join(nlp_toolbox_dir, 'jurors.yaml')
+                yield f"data: {json.dumps({'status': 'output', 'message': f'Looking for jurors.yaml at: {jurors_yaml_source}'})}\n\n"
+                
+                if os.path.exists(jurors_yaml_source):
+                    filename = f"generated_jurors_{int(time.time())}.yaml"
+                    jurors_yaml_dest = os.path.join(JUROR_DIR, filename)
+                    shutil.copy2(jurors_yaml_source, jurors_yaml_dest)
+                    
+                    yield f"data: {json.dumps({'status': 'output', 'message': f'Generated jurors saved as {filename}'})}\n\n"
+                    yield f"data: {json.dumps({'status': 'completed', 'message': f'Successfully generated {juror_count} jurors', 'filename': filename})}\n\n"
+                else:
+                    # List files in the directory to help debug
+                    try:
+                        files_in_dir = os.listdir(nlp_toolbox_dir)
+                        yield f"data: {json.dumps({'status': 'output', 'message': f'Files in NLP toolbox dir: {files_in_dir}'})}\n\n"
+                    except Exception as debug_e:
+                        yield f"data: {json.dumps({'status': 'output', 'message': f'Could not list directory: {str(debug_e)}'})}\n\n"
+                    yield f"data: {json.dumps({'status': 'error', 'message': 'jurors.yaml not found after generation'})}\n\n"
+                    
+            except Exception as e:
+                import traceback
+                error_trace = traceback.format_exc()
+                logger.error(f"Error in generate_jurors generator: {str(e)}")
+                logger.error(f"Traceback: {error_trace}")
+                yield f"data: {json.dumps({'status': 'error', 'message': f'Error during juror generation: {str(e)}'})}\n\n"
+                yield f"data: {json.dumps({'status': 'error', 'message': f'Full traceback: {error_trace}'})}\n\n"
+        
+        return Response(generate(), 
+                       mimetype='text/event-stream',
+                       headers={
+                           'Cache-Control': 'no-cache',
+                           'Connection': 'keep-alive',
+                           'Access-Control-Allow-Origin': '*',
+                           'X-Accel-Buffering': 'no'
+                       })
+    
+    except Exception as e:
+        logger.error(f"Error in generate_jurors route: {str(e)}")
+        def error_gen():
+            yield f"data: {json.dumps({'status': 'error', 'message': f'Route error: {str(e)}'})}\n\n"
         return Response(error_gen(), mimetype='text/event-stream')
 
 @app.route('/test-env')
@@ -394,6 +584,363 @@ def initialize_api_key():
 # Initialize API key on startup
 initialize_api_key()
 
+# Global dictionary to store active terminal sessions
+active_terminals = {}
+
+@socketio.on('start_interactive_generation')
+def handle_start_interactive_generation(data):
+    """Start an interactive juror generation session"""
+    try:
+        logger.info(f"Received start_interactive_generation event with data: {data}")
+        juror_count = data.get('count', 5)
+        session_id = request.sid
+        logger.info(f"Starting generation for {juror_count} jurors, session_id: {session_id}")
+        
+        # Get the backend directory path
+        backend_dir = os.path.join(os.path.dirname(__file__), 'backend')
+        nlp_toolbox_dir = os.path.join(backend_dir, 'NLPAgentsToolbox')
+        venv_python = os.path.join(nlp_toolbox_dir, '.venv', 'bin', 'python')
+        mkbio_script = os.path.join(nlp_toolbox_dir, 'tools', 'mkbio.py')
+        rmbio_script = os.path.join(nlp_toolbox_dir, 'tools', 'rmbio.py')
+        
+        logger.info(f"Backend dir: {backend_dir}")
+        logger.info(f"NLP toolbox dir: {nlp_toolbox_dir}")
+        logger.info(f"Virtual env python: {venv_python}")
+        logger.info(f"mkbio script: {mkbio_script}")
+        logger.info(f"rmbio script: {rmbio_script}")
+        
+        emit('terminal_output', {'data': f'Starting interactive juror generation for {juror_count} jurors...\r\n'})
+        
+        # Check if paths exist
+        if not os.path.exists(nlp_toolbox_dir):
+            logger.error(f"NLPAgentsToolbox not found at {nlp_toolbox_dir}")
+            emit('terminal_output', {'data': f'Error: NLPAgentsToolbox not found at {nlp_toolbox_dir}\r\n'})
+            return
+            
+        if not os.path.exists(venv_python):
+            logger.error(f"Virtual environment Python not found at {venv_python}")
+            emit('terminal_output', {'data': f'Error: Virtual environment Python not found at {venv_python}\r\n'})
+            return
+            
+        if not os.path.exists(mkbio_script):
+            logger.error(f"mkbio.py not found at {mkbio_script}")
+            emit('terminal_output', {'data': f'Error: mkbio.py not found at {mkbio_script}\r\n'})
+            return
+            
+        if not os.path.exists(rmbio_script):
+            logger.error(f"rmbio.py not found at {rmbio_script}")
+            emit('terminal_output', {'data': f'Error: rmbio.py not found at {rmbio_script}\r\n'})
+            return
+        
+        logger.info("All paths exist, creating pseudo-terminal...")
+        
+        # Create a pseudo-terminal
+        master_fd, slave_fd = pty.openpty()
+        logger.info(f"Created pty: master_fd={master_fd}, slave_fd={slave_fd}")
+        
+        # Set up environment variables for the process
+        env = os.environ.copy()
+        
+        # Read API key from the toolbox api_key file or environment variable
+        api_key_file = os.path.join(nlp_toolbox_dir, 'api_key')
+        if os.path.exists(api_key_file):
+            with open(api_key_file, 'r') as f:
+                content = f.read().strip()
+                # Extract the API key from the export statement
+                if content.startswith("export OPENAI_API_KEY="):
+                    api_key = content.split("'")[1] if "'" in content else content.split("=")[1].strip('"')
+                    env['OPENAI_API_KEY'] = api_key
+                    emit('terminal_output', {'data': 'API key loaded from file\r\n'})
+                    logger.info("API key loaded from file")
+                else:
+                    env['OPENAI_API_KEY'] = content
+                    logger.info("API key loaded from file (direct content)")
+        elif 'OPENAI_API_KEY' in os.environ:
+            # Use environment variable (for Cloud Run deployment)
+            env['OPENAI_API_KEY'] = os.environ['OPENAI_API_KEY']
+            emit('terminal_output', {'data': 'API key loaded from environment\r\n'})
+            logger.info("API key loaded from environment variable")
+        else:
+            logger.warning(f"API key not found in file {api_key_file} or environment")
+            emit('terminal_output', {'data': 'Warning: No API key found\r\n'})
+        
+        # Run rmbio.py -A before starting the generation process
+        logger.info("Running rmbio.py -A to clean up before generation...")
+        emit('terminal_output', {'data': 'Cleaning up previous data with rmbio.py -A...\r\n'})
+        
+        try:
+            rmbio_result = subprocess.run(
+                [venv_python, rmbio_script, '-A'],
+                cwd=nlp_toolbox_dir,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=30  # 30 second timeout
+            )
+            
+            if rmbio_result.returncode == 0:
+                logger.info("rmbio.py -A completed successfully")
+                emit('terminal_output', {'data': 'Cleanup completed successfully\r\n'})
+            else:
+                logger.warning(f"rmbio.py -A returned code {rmbio_result.returncode}")
+                emit('terminal_output', {'data': f'Cleanup completed with warnings (exit code: {rmbio_result.returncode})\r\n'})
+                
+            # Log any output from rmbio
+            if rmbio_result.stdout:
+                logger.info(f"rmbio stdout: {rmbio_result.stdout}")
+            if rmbio_result.stderr:
+                logger.info(f"rmbio stderr: {rmbio_result.stderr}")
+                
+        except subprocess.TimeoutExpired:
+            logger.error("rmbio.py -A timed out")
+            emit('terminal_output', {'data': 'Cleanup timed out, proceeding anyway...\r\n'})
+        except Exception as e:
+            logger.error(f"Error running rmbio.py -A: {e}")
+            emit('terminal_output', {'data': f'Cleanup error: {str(e)}, proceeding anyway...\r\n'})
+        
+        logger.info("Starting subprocess...")
+        
+        # Start the process in the pseudo-terminal
+        process = subprocess.Popen(
+            [venv_python, mkbio_script, '-n', str(juror_count)],
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            cwd=nlp_toolbox_dir,
+            env=env,
+            preexec_fn=os.setsid
+        )
+        
+        logger.info(f"Process started with PID: {process.pid}")
+        
+        # Close the slave fd in the parent process
+        os.close(slave_fd)
+        
+        # Store the terminal session
+        active_terminals[session_id] = {
+            'process': process,
+            'master_fd': master_fd,
+            'nlp_toolbox_dir': nlp_toolbox_dir,
+            'juror_count': juror_count
+        }
+        
+        logger.info(f"Stored terminal session for {session_id}")
+        
+        # Start a thread to read from the terminal
+        def read_terminal():
+            logger.info("Starting terminal reader thread...")
+            try:
+                while process.poll() is None:
+                    # Check if there's data to read
+                    ready, _, _ = select.select([master_fd], [], [], 0.1)
+                    if ready:
+                        try:
+                            data = os.read(master_fd, 1024).decode('utf-8', errors='ignore')
+                            if data:
+                                logger.debug(f"Terminal output: {repr(data)}")
+                                socketio.emit('terminal_output', {'data': data}, room=session_id)
+                        except OSError as e:
+                            logger.error(f"OSError reading from terminal: {e}")
+                            break
+                
+                logger.info(f"Process finished with return code: {process.returncode}")
+                
+                # Process finished, check if we need to run lsbio
+                if process.returncode == 0:
+                    socketio.emit('terminal_output', {'data': '\r\nmkbio.py completed successfully. Starting lsbio.py...\r\n'}, room=session_id)
+                    run_lsbio_phase(session_id)
+                else:
+                    socketio.emit('terminal_output', {'data': f'\r\nmkbio.py failed with return code {process.returncode}\r\n'}, room=session_id)
+                    cleanup_terminal(session_id)
+                    
+            except Exception as e:
+                logger.error(f"Error reading terminal: {e}")
+                import traceback
+                logger.error(f"Traceback: {traceback.format_exc()}")
+                socketio.emit('terminal_output', {'data': f'\r\nError reading terminal: {str(e)}\r\n'}, room=session_id)
+                cleanup_terminal(session_id)
+        
+        thread = threading.Thread(target=read_terminal)
+        thread.daemon = True
+        thread.start()
+        logger.info("Terminal reader thread started")
+        
+    except Exception as e:
+        logger.error(f"Error starting interactive generation: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        emit('terminal_output', {'data': f'Error starting generation: {str(e)}\r\n'})
+
+def run_lsbio_phase(session_id):
+    """Run the lsbio.py phase after mkbio.py completes"""
+    try:
+        terminal_info = active_terminals.get(session_id)
+        if not terminal_info:
+            return
+            
+        nlp_toolbox_dir = terminal_info['nlp_toolbox_dir']
+        venv_python = os.path.join(nlp_toolbox_dir, '.venv', 'bin', 'python')
+        lsbio_script = os.path.join(nlp_toolbox_dir, 'tools', 'lsbio.py')
+        
+        # Create new pseudo-terminal for lsbio
+        master_fd, slave_fd = pty.openpty()
+        
+        # Set up environment variables for lsbio
+        env = os.environ.copy()
+        
+        # Read API key from the toolbox api_key file
+        api_key_file = os.path.join(nlp_toolbox_dir, 'api_key')
+        if os.path.exists(api_key_file):
+            with open(api_key_file, 'r') as f:
+                content = f.read().strip()
+                # Extract the API key from the export statement
+                if content.startswith("export OPENAI_API_KEY="):
+                    api_key = content.split("'")[1] if "'" in content else content.split("=")[1].strip('"')
+                    env['OPENAI_API_KEY'] = api_key
+                else:
+                    env['OPENAI_API_KEY'] = content
+        
+        # Start lsbio process
+        process = subprocess.Popen(
+            [venv_python, lsbio_script, '-e'],
+            stdin=slave_fd,
+            stdout=slave_fd,
+            stderr=slave_fd,
+            cwd=nlp_toolbox_dir,
+            env=env,
+            preexec_fn=os.setsid
+        )
+        
+        # Close the slave fd in the parent process
+        os.close(slave_fd)
+        
+        # Update terminal session
+        terminal_info['process'] = process
+        terminal_info['master_fd'] = master_fd
+        
+        # Start reading from lsbio terminal
+        def read_lsbio_terminal():
+            try:
+                while process.poll() is None:
+                    ready, _, _ = select.select([master_fd], [], [], 0.1)
+                    if ready:
+                        try:
+                            data = os.read(master_fd, 1024).decode('utf-8', errors='ignore')
+                            if data:
+                                socketio.emit('terminal_output', {'data': data}, room=session_id)
+                        except OSError:
+                            break
+                
+                # lsbio finished
+                if process.returncode == 0:
+                    socketio.emit('terminal_output', {'data': '\r\nlsbio.py completed successfully.\r\n'}, room=session_id)
+                    # Move jurors.yaml to temp directory
+                    move_generated_file(session_id)
+                else:
+                    socketio.emit('terminal_output', {'data': f'\r\nlsbio.py failed with return code {process.returncode}\r\n'}, room=session_id)
+                
+                cleanup_terminal(session_id)
+                    
+            except Exception as e:
+                logger.error(f"Error reading lsbio terminal: {e}")
+                socketio.emit('terminal_output', {'data': f'\r\nError reading lsbio terminal: {str(e)}\r\n'}, room=session_id)
+                cleanup_terminal(session_id)
+        
+        thread = threading.Thread(target=read_lsbio_terminal)
+        thread.daemon = True
+        thread.start()
+        
+    except Exception as e:
+        logger.error(f"Error running lsbio phase: {e}")
+        socketio.emit('terminal_output', {'data': f'Error running lsbio: {str(e)}\r\n'}, room=session_id)
+
+def move_generated_file(session_id):
+    """Move the generated jurors.yaml file to the temp directory"""
+    try:
+        terminal_info = active_terminals.get(session_id)
+        if not terminal_info:
+            return
+            
+        nlp_toolbox_dir = terminal_info['nlp_toolbox_dir']
+        juror_count = terminal_info['juror_count']
+        
+        # Check both possible locations for jurors.yaml
+        possible_locations = [
+            os.path.join(nlp_toolbox_dir, 'build', 'jurors.yaml'),  # build/ subdirectory
+            os.path.join(nlp_toolbox_dir, 'jurors.yaml')            # root directory
+        ]
+        
+        jurors_yaml_source = None
+        for location in possible_locations:
+            if os.path.exists(location):
+                jurors_yaml_source = location
+                logger.info(f"Found jurors.yaml at: {location}")
+                break
+        
+        if jurors_yaml_source:
+            filename = f"generated_jurors_{int(time.time())}.yaml"
+            jurors_yaml_dest = os.path.join(JUROR_DIR, filename)
+            shutil.copy2(jurors_yaml_source, jurors_yaml_dest)
+            
+            socketio.emit('terminal_output', {'data': f'Generated jurors saved as {filename}\r\n'}, room=session_id)
+            socketio.emit('generation_completed', {'filename': filename, 'count': juror_count}, room=session_id)
+        else:
+            # Debug: List files in both locations
+            logger.warning("jurors.yaml not found, checking directories...")
+            for check_dir in [nlp_toolbox_dir, os.path.join(nlp_toolbox_dir, 'build')]:
+                if os.path.exists(check_dir):
+                    try:
+                        files = os.listdir(check_dir)
+                        logger.info(f"Files in {check_dir}: {files}")
+                        socketio.emit('terminal_output', {'data': f'Files in {check_dir}: {files}\r\n'}, room=session_id)
+                    except Exception as e:
+                        logger.error(f"Error listing {check_dir}: {e}")
+            
+            socketio.emit('terminal_output', {'data': 'Warning: jurors.yaml not found after generation\r\n'}, room=session_id)
+            
+    except Exception as e:
+        logger.error(f"Error moving generated file: {e}")
+        socketio.emit('terminal_output', {'data': f'Error saving generated file: {str(e)}\r\n'}, room=session_id)
+
+@socketio.on('terminal_input')
+def handle_terminal_input(data):
+    """Handle input from the user to the terminal"""
+    try:
+        session_id = request.sid
+        terminal_info = active_terminals.get(session_id)
+        
+        if terminal_info and 'master_fd' in terminal_info:
+            user_input = data.get('input', '')
+            os.write(terminal_info['master_fd'], user_input.encode('utf-8'))
+            
+    except Exception as e:
+        logger.error(f"Error handling terminal input: {e}")
+        emit('terminal_output', {'data': f'Error sending input: {str(e)}\r\n'})
+
+@socketio.on('disconnect')
+def handle_disconnect():
+    """Clean up when client disconnects"""
+    session_id = request.sid
+    cleanup_terminal(session_id)
+
+def cleanup_terminal(session_id):
+    """Clean up terminal session"""
+    try:
+        terminal_info = active_terminals.pop(session_id, None)
+        if terminal_info:
+            try:
+                if 'process' in terminal_info and terminal_info['process']:
+                    terminal_info['process'].terminate()
+            except:
+                pass
+            try:
+                if 'master_fd' in terminal_info:
+                    os.close(terminal_info['master_fd'])
+            except:
+                pass
+    except Exception as e:
+        logger.error(f"Error cleaning up terminal: {e}")
+
 # Add startup logging for debugging
 logger.info(f"Flask app starting - Environment: {os.environ.get('FLASK_ENV', 'production')}")
 logger.info(f"Port: {PORT}, Host: {HOST}")
@@ -412,16 +959,10 @@ if __name__ == "__main__":
     try:
         # Use production-safe server settings
         if DEBUG:
-            app.run(debug=True, port=PORT, host=HOST)
+            socketio.run(app, debug=True, port=PORT, host=HOST)
         else:
             # In production, use a proper WSGI server
-            from waitress import serve
-            logger.info(f"Starting production server on {HOST}:{PORT}")
-            serve(app, host=HOST, port=PORT)
-    except ImportError:
-        # Fallback if waitress is not available
-        logger.warning("Waitress not available, using Flask dev server")
-        app.run(debug=False, port=PORT, host=HOST)
+            socketio.run(app, debug=False, port=PORT, host=HOST)
     finally:
         # Cleanup temp directory on exit
         if os.path.exists(TEMP_DIR):
