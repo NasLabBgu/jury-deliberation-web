@@ -737,10 +737,16 @@ details summary[role=button]:not(.outline)::after {
         color-scheme: dark !important;
     }
 
+    /* Force sans-serif fonts for all elements */
+    *, *::before, *::after, body, html, table, tr, td, th, input, button, label, span, div, p, h1, h2, h3, h4, h5, h6 {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif !important;
+    }
+
     /* Make sure all dark mode styles are always applied regardless of user preferences */
     /* This is the same content as the @media only screen and (prefers-color-scheme: dark) blocks,
        but we're making sure it's applied regardless of the user's preference */
     :host, :root {
+        --pico-font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif !important;
         --pico-background-color: rgb(19, 22.5, 30.5);
         --pico-color: #c2c7d0;
         --pico-text-selection-color: rgba(1, 170, 255, 0.1875);
@@ -817,7 +823,7 @@ details summary[role=button]:not(.outline)::after {
         --pico-range-thumb-color: var(--pico-secondary-background);
         --pico-range-thumb-active-color: var(--pico-primary-background);
         --pico-table-border-color: var(--pico-muted-border-color);
-        --pico-table-row-stripped-background-color: rgba(88, 96, 109, 0.0375);
+        --pico-table-row-stripped-background-color: transparent !important; /* Remove blue striping */
         --pico-code-background-color: #1a1d23;
         --pico-code-color: var(--pico-muted-color);
         --pico-code-kbd-background-color: var(--pico-color);
@@ -851,23 +857,26 @@ details summary[role=button]:not(.outline)::after {
     body {
         background-color: rgb(19, 22.5, 30.5) !important;
         color: #c2c7d0 !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif !important;
     }
     
     /* Style all buttons consistently */
     button, input[type="button"], input[type="reset"], input[type="submit"] {
-        background-color: #0172ad !important;
+        background-color: #6c757d !important; /* Grey by default */
         color: #fff !important;
-        border-color: #0172ad !important;
+        border-color: #6c757d !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif !important;
     }
     
     button:hover, input[type="button"]:hover, input[type="reset"]:hover, input[type="submit"]:hover {
-        background-color: #017fc0 !important;
-        border-color: #017fc0 !important;
+        background-color: #5a6268 !important;
+        border-color: #5a6268 !important;
     }
     
-    /* Ensure all table elements maintain dark mode */
+    /* Ensure all table elements maintain dark mode and remove striping */
     table, th, td {
         border-color: #202632 !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif !important;
     }
     
     th {
@@ -875,12 +884,21 @@ details summary[role=button]:not(.outline)::after {
         color: #e1e6ee !important;
     }
     
+    /* Remove striping - make all rows the same grey */
+    tr {
+        background-color: #2a2f3a !important;
+    }
+    
     tr:nth-child(even) {
-        background-color: #141720 !important;
+        background-color: #2a2f3a !important; /* Same as odd rows */
+    }
+    
+    tr:nth-child(odd) {
+        background-color: #2a2f3a !important; /* Same as even rows */
     }
     
     tr:hover {
-        background-color: #1e2734 !important;
+        background-color: #353a47 !important;
     }
     
     /* Style form elements */
@@ -888,6 +906,7 @@ details summary[role=button]:not(.outline)::after {
         background-color: #11141a !important;
         color: #c2c7d0 !important;
         border-color: #202632 !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif !important;
     }
     
     input:focus, select:focus, textarea:focus {
@@ -897,6 +916,7 @@ details summary[role=button]:not(.outline)::after {
     /* Make links visible against dark background */
     a {
         color: #01aaff !important;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif !important;
     }
     
     a:hover {

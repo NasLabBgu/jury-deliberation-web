@@ -126,6 +126,11 @@
     </style>
     
     <style>
+        /* Force sans-serif fonts for all elements */
+        body, table, td, th, input, button, label, span, div, p, h1, h2, h3, h4, h5, h6 {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif !important;
+        }
+        
         table {
             width: 85%;
             margin: 2rem auto;
@@ -177,6 +182,51 @@
             background: transparent !important;
         }
         
+        /* Fix table styling - remove blue stripes, make rows grey by default */
+        table tr {
+            background-color: #2a2f3a !important; /* Grey background for all rows */
+        }
+        
+        table tr:hover {
+            background-color: #353a47 !important; /* Slightly lighter grey on hover */
+        }
+        
+        /* Override any striped table styling */
+        table tr:nth-child(even) {
+            background-color: #2a2f3a !important; /* Same grey as other rows */
+        }
+        
+        table tr:nth-child(odd) {
+            background-color: #2a2f3a !important; /* Same grey as other rows */
+        }
+        
+        /* Standardize button styling - keep "Run Process" blue, make others grey */
+        button, input[type="button"], input[type="submit"], input[type="reset"] {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Helvetica Neue", Arial, sans-serif !important;
+            background-color: #6c757d !important; /* Grey background for all buttons */
+            color: white !important;
+            border: 1px solid #6c757d !important;
+            padding: 0.5em 1em !important;
+            border-radius: 4px !important;
+            cursor: pointer !important;
+        }
+        
+        button:hover, input[type="button"]:hover, input[type="submit"]:hover, input[type="reset"]:hover {
+            background-color: #5a6268 !important; /* Darker grey on hover */
+            border-color: #5a6268 !important;
+        }
+        
+        /* Keep "Run Process" button blue */
+        #runButton {
+            background-color: #007bff !important; /* Blue background for run button */
+            border-color: #007bff !important;
+        }
+        
+        #runButton:hover {
+            background-color: #0056b3 !important; /* Darker blue on hover */
+            border-color: #0056b3 !important;
+        }
+        
         /* File row highlight animation - dark mode friendly */
         .file-row-highlight {
             background-color: #2a4b8d;
@@ -200,8 +250,8 @@
             <!-- Filename rows will be inserted here -->
             <tr id="uploadRow">
                 <td>
-                    <button type="button" style="color: white" id="uploadButton">Upload</button>
-                    <button type="button" style="color: white; margin-left: 1rem;" id="generateButton" onclick="showGenerateModal()">Generate</button>
+                    <button type="button" id="uploadButton">Upload</button>
+                    <button type="button" style="margin-left: 1rem;" id="generateButton" onclick="showGenerateModal()">Generate</button>
                     <input type="file" id="fileInput" style="display:none;" multiple onchange="handleFiles(event)">
                 </td>
             </tr>
@@ -224,8 +274,8 @@
             </tr>
             <tr id="runRow" style="display: none;">
                 <td style="display: flex; justify-content: space-between; align-items: center;">
-                    <button id="runButton" onclick="runProcess()" style="/* padding: 0.5em 1em; */ background: #007bff; color: white; /* border: none; */ /* border-radius: 4px; */ cursor: pointer;">Run Process</button>
-                    <button type="button" style="color: white; display: none;" id="copyOutputButton" onclick="copyOutputToClipboard()">Copy output to clipboard</button>
+                    <button id="runButton" onclick="runProcess()">Run Process</button>
+                    <button type="button" style="display: none;" id="copyOutputButton" onclick="copyOutputToClipboard()">Copy output to clipboard</button>
                 </td>
             </tr>
         </tbody>
@@ -271,9 +321,6 @@
                         ">
                         <button onclick="sendTerminalInput()" style="
                             margin-left: 0.5rem;
-                            background: #ffffff;
-                            color: #000;
-                            border: none;
                             padding: 0.5rem 1rem;
                             border-radius: 4px;
                             cursor: pointer;
@@ -825,7 +872,7 @@
                             <label class="weight-label">weight: <input type="number" id="weight_${fileObj.name}" min="0" step="1" value="100"></label>
                             <label><input type="radio" name="category_${fileObj.name}" value="juror" ${jurorChecked}> juror</label>
                             <label><input type="radio" name="category_${fileObj.name}" value="case" ${caseChecked}> case</label>
-                            <button type="button" style="color: white" onclick="deleteFileRow('${fileObj.name}')">Delete</button>
+                            <button type="button" onclick="deleteFileRow('${fileObj.name}')">Delete</button>
                         </div>
                     </div>
                 </td>
@@ -862,7 +909,7 @@
             const uploadRow = document.getElementById('uploadRow');
             const row = document.createElement('tr');
             row.id = 'noFilesRow';
-            row.innerHTML = '<td style="color: #888;">No files yet.</td>';
+            row.innerHTML = '<td style="color: #7b8495;">No files yet.</td>';
             table.insertBefore(row, uploadRow);
         }
 
