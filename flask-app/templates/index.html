@@ -2,6 +2,8 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#13161e">
     <title>Interactive Table</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.2/socket.io.js"></script>
@@ -175,15 +177,15 @@
             background: transparent !important;
         }
         
-        /* File row highlight animation */
+        /* File row highlight animation - dark mode friendly */
         .file-row-highlight {
-            background-color: #ffff00;
+            background-color: #2a4b8d;
             animation: fadeOutHighlight 3s ease-out forwards;
         }
         
         @keyframes fadeOutHighlight {
-            0% { background-color: #ffff00; }
-            33% { background-color: #ffff00; }
+            0% { background-color: #2a4b8d; }
+            33% { background-color: #2a4b8d; }
             100% { background-color: transparent; }
         }
        
@@ -193,7 +195,7 @@
     <table id="mainTable">
         <tbody>
             <tr id="noFilesRow">
-                <td style="color: #888;">No files yet.</td>
+                <td style="color: #7b8495;">No files yet.</td>
             </tr>
             <!-- Filename rows will be inserted here -->
             <tr id="uploadRow">
@@ -288,6 +290,49 @@
             </footer>
         </article>
     </dialog>
+
+    <!-- Script to enforce dark mode -->
+    <script>
+        // Force dark mode for all users
+        document.addEventListener('DOMContentLoaded', function() {
+            // Force dark mode at the document level
+            document.documentElement.style.colorScheme = 'dark';
+            
+            // Remove any potential light mode classes that might be added dynamically
+            const forceColors = function() {
+                document.documentElement.classList.remove('light');
+                document.documentElement.classList.add('dark');
+                document.body.classList.remove('light');
+                document.body.classList.add('dark');
+                
+                // Override any inline styles that might specify light colors
+                const allElements = document.querySelectorAll('*');
+                allElements.forEach(el => {
+                    if (window.getComputedStyle(el).backgroundColor === 'rgb(255, 255, 255)') {
+                        el.style.backgroundColor = '#13161e';
+                    }
+                    if (window.getComputedStyle(el).color === 'rgb(0, 0, 0)') {
+                        el.style.color = '#c2c7d0';
+                    }
+                });
+            };
+            
+            // Run immediately and on any theme change event
+            forceColors();
+            
+            // Observe for class changes on the HTML element (some frameworks do this)
+            const observer = new MutationObserver(forceColors);
+            observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+            
+            // Override any potential matchMedia events
+            const mediaQuery = window.matchMedia('(prefers-color-scheme: light)');
+            if (mediaQuery.addEventListener) {
+                mediaQuery.addEventListener('change', forceColors);
+            } else {
+                mediaQuery.addListener(forceColors); // For older browsers
+            }
+        });
+    </script>
 
     <script>
         const state = {};
@@ -910,7 +955,9 @@
                     outputArea.style.cssText = `
                         margin-top: 1em;
                         padding: 1em;
-                        border: 1px solid #ccc;
+                        border: 1px solid #202632;
+                        background-color: #141720;
+                        color: #c2c7d0;
                         max-height: 400px;
                         overflow-y: auto;
                         white-space: pre-wrap;
