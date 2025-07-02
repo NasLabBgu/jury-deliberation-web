@@ -56,6 +56,18 @@
         main {
             background: transparent !important;
         }
+        
+        /* File row highlight animation */
+        .file-row-highlight {
+            background-color: #ffff00;
+            animation: fadeOutHighlight 3s ease-out forwards;
+        }
+        
+        @keyframes fadeOutHighlight {
+            0% { background-color: #ffff00; }
+            33% { background-color: #ffff00; }
+            100% { background-color: transparent; }
+        }
        
     </style>
 </head>
@@ -110,22 +122,15 @@
                 <div id="inputSection">
                     <p>How many jurors would you like to generate?</p>
                     <input type="number" id="modalJurorCount" min="1" max="20" value="5">
-                    <div style="margin-top: 1rem; padding: 0.5rem; background: #f5f5f5; border-radius: 4px; font-size: 0.9em;">
-                        <strong>Note:</strong> The generation process is interactive and will prompt you for:
-                        <ul style="margin: 0.5rem 0; padding-left: 1.5rem;">
-                            <li>Name confirmation (Accept/New/Enter custom)</li>
-                            <li>Religion confirmation</li>
-                            <li>Race/ethnicity biases (optional)</li>
-                            <li>Role description (required)</li>
-                            <li>Goal for the juror (optional)</li>
-                        </ul>
-                        You'll be able to type responses in the terminal below.
+                    <div style="margin-top: 1rem; padding: 0.5rem; background: transparent; border: 1px solid var(--pico-muted-border-color); border-radius: 4px; font-size: 0.9em;">
+                        <strong>Note:</strong> The online generation tool is in beta testing. <br>
+                        Some features such as customizable presented distribution are not available online. 
                     </div>
                 </div>
                 <div id="terminalSection" style="display: none;">
                     <div id="terminalOutput" style="
                         background: #000;
-                        color: #00ff00;
+                        color: #fff;
                         font-family: monospace;
                         padding: 1rem;
                         height: 280px;
@@ -146,7 +151,7 @@
                         ">
                         <button onclick="sendTerminalInput()" style="
                             margin-left: 0.5rem;
-                            background: #00ff00;
+                            background: #ffffff;
                             color: #000;
                             border: none;
                             padding: 0.5rem 1rem;
@@ -169,6 +174,7 @@
     <script>
         const state = {};
         let uploadedFiles = []; // Store file objects, not just filenames
+        let lastGeneratedFilename = null; // Track the last generated file for highlighting
 
         document.addEventListener('DOMContentLoaded', function() {
             console.log('DOM loaded, setting up file upload');
@@ -327,6 +333,8 @@
                 modal.close();
                 // Reset modal to initial state
                 resetGenerateModal();
+                // Highlight the generated file row if available
+                highlightGeneratedFileRow();
             }
         }
 
@@ -340,7 +348,7 @@
             
             if (inputSection) inputSection.style.display = 'block';
             if (terminalSection) terminalSection.style.display = 'none';
-            if (terminalOutput) terminalOutput.textContent = '';
+            if (terminalOutput) terminalOutput.innerHTML = '';
             
             // Reset terminal input state
             if (terminalInput) {
@@ -399,6 +407,45 @@
         // WebSocket connection for interactive terminal
         let socket = null;
         
+        function processAnsiEscapes(text) {
+            // Convert ANSI escape sequences to HTML spans with colors
+            const ansiMap = {
+                // Reset
+                '0': 'color: #fff',
+                // Text colors
+                '30': 'color: #000', // black
+                '31': 'color: #ff0000', // red
+                '32': 'color: #00ff00', // green
+                '33': 'color: #ffff00', // yellow
+                '34': 'color: #0000ff', // blue
+                '35': 'color: #ff00ff', // magenta
+                '36': 'color: #00ffff', // cyan
+                '37': 'color: #fff', // white
+                // Bright colors
+                '90': 'color: #808080', // bright black (gray)
+                '91': 'color: #ff6666', // bright red
+                '92': 'color: #66ff66', // bright green
+                '93': 'color: #ffff66', // bright yellow
+                '94': 'color: #6666ff', // bright blue
+                '95': 'color: #ff66ff', // bright magenta
+                '96': 'color: #66ffff', // bright cyan
+                '97': 'color: #ffffff'  // bright white
+            };
+            
+            // Replace ANSI escape sequences with HTML spans
+            return text.replace(/\x1b\[([0-9;]*)m/g, function(match, codes) {
+                if (!codes) return '</span>';
+                
+                const codeList = codes.split(';');
+                const styles = codeList.map(code => ansiMap[code]).filter(style => style);
+                
+                if (styles.length > 0) {
+                    return `<span style="${styles.join('; ')}">`;
+                }
+                return '';
+            });
+        }
+        
         function initializeSocket() {
             if (!socket) {
                 socket = io();
@@ -406,7 +453,9 @@
                 socket.on('terminal_output', function(data) {
                     const terminalOutput = document.getElementById('terminalOutput');
                     if (terminalOutput) {
-                        terminalOutput.textContent += data.data;
+                        // Process ANSI escape sequences and append as HTML
+                        const processedText = processAnsiEscapes(data.data);
+                        terminalOutput.innerHTML += processedText;
                         terminalOutput.scrollTop = terminalOutput.scrollHeight;
                     }
                 });
@@ -414,17 +463,18 @@
                 socket.on('generation_completed', function(data) {
                     const terminalOutput = document.getElementById('terminalOutput');
                     if (terminalOutput) {
-                        terminalOutput.textContent += `\n\n═══════════════════════════════════════\n`;
-                        terminalOutput.textContent += `✓ GENERATION COMPLETED SUCCESSFULLY!\n`;
-                        terminalOutput.textContent += `Generated ${data.count} jurors\n`;
+                        terminalOutput.innerHTML += `\n\n<span style="color: white">═══════════════════════════════════════</span>\n`;
+                        terminalOutput.innerHTML += `<span style="color: white">✓ GENERATION COMPLETED SUCCESSFULLY!</span>\n`;
+                        terminalOutput.innerHTML += `<span style="color: #00ff00">Generated ${data.count} jurors\n`;
                         if (data.filename) {
-                            terminalOutput.textContent += `Saved as: ${data.filename}\n`;
+                            terminalOutput.innerHTML += `Saved as: ${data.filename}\n`;
                         }
-                        terminalOutput.textContent += `═══════════════════════════════════════\n`;
+                        terminalOutput.innerHTML += `═══════════════════════════════════════</span>\n`;
                         terminalOutput.scrollTop = terminalOutput.scrollHeight;
                     }
                     
                     if (data.filename) {
+                        lastGeneratedFilename = data.filename; // Store for highlighting later
                         addGeneratedFileToList(data.filename);
                     }
                     
@@ -451,8 +501,8 @@
                 socket.on('connect', function() {
                     console.log('Connected to server');
                     const terminalOutput = document.getElementById('terminalOutput');
-                    if (terminalOutput && terminalOutput.textContent.includes('Connecting to interactive terminal')) {
-                        terminalOutput.textContent += `Connected! Starting generation...\n`;
+                    if (terminalOutput && terminalOutput.innerHTML.includes('Connecting to interactive terminal')) {
+                        terminalOutput.innerHTML += `<span style="color: #00ff00">Connected! Starting generation...</span>\n`;
                     }
                 });
                 
@@ -460,7 +510,7 @@
                     console.log('Disconnected from server');
                     const terminalOutput = document.getElementById('terminalOutput');
                     if (terminalOutput) {
-                        terminalOutput.textContent += `\n[CONNECTION LOST] Socket disconnected\n`;
+                        terminalOutput.innerHTML += `\n<span style="color: #ff6666">[CONNECTION LOST] Socket disconnected</span>\n`;
                     }
                 });
                 
@@ -468,7 +518,7 @@
                     console.error('Connection error:', error);
                     const terminalOutput = document.getElementById('terminalOutput');
                     if (terminalOutput) {
-                        terminalOutput.textContent += `\n[ERROR] Connection failed: ${error}\n`;
+                        terminalOutput.innerHTML += `\n<span style="color: #ff6666">[ERROR] Connection failed: ${error}</span>\n`;
                     }
                 });
             }
@@ -481,7 +531,7 @@
             // Initialize socket connection
             initializeSocket();
             
-            terminalOutput.textContent = `Connecting to interactive terminal...\n`;
+            terminalOutput.innerHTML = `<span style="color: #00ffff">Connecting to interactive terminal...</span>\n`;
             
             // Start the interactive generation process
             socket.emit('start_interactive_generation', {
@@ -658,6 +708,9 @@
                 // Create FormData to send actual files
                 const formData = new FormData();
                 
+                // Collect all file metadata (including generated files)
+                const allFileMetadata = [];
+                
                 // Add files and their metadata
                 uploadedFiles.forEach(fileObj => {
                     const radioButtons = document.querySelectorAll(`input[name="category_${fileObj.name}"]:checked`);
@@ -666,7 +719,15 @@
                     const weightInput = document.getElementById(`weight_${fileObj.name}`);
                     const weight = weightInput ? parseInt(weightInput.value) || 100 : 100;
                     
-                    // Only add actual file objects (skip generated files that are already on server)
+                    // Add to metadata list
+                    allFileMetadata.push({
+                        name: fileObj.name,
+                        category: category,
+                        weight: weight,
+                        generated: fileObj.generated || false
+                    });
+                    
+                    // Only add actual file objects (not generated files)
                     if (fileObj.file && !fileObj.generated) {
                         formData.append('files', fileObj.file);
                         formData.append('categories', category);
@@ -674,26 +735,23 @@
                     }
                 });
 
-                // If we have any files to upload, send them
-                if (formData.has('files')) {
-                    const response = await fetch('/upload', {
-                        method: 'POST',
-                        body: formData
-                    });
+                // Add metadata for all files (including generated ones)
+                formData.append('allFilesMetadata', JSON.stringify(allFileMetadata));
 
-                    const result = await response.json();
-                    
-                    if (result.success) {
-                        console.log('Files uploaded successfully:', result);
-                        return true;
-                    } else {
-                        console.error('Upload error:', result.error);
-                        return false;
-                    }
-                } else {
-                    // No new files to upload, but we have generated files already on server
-                    console.log('No new files to upload, using existing generated files');
+                // Always send the request (even if no new files) to update metadata
+                const response = await fetch('/upload', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+                
+                if (result.success) {
+                    console.log('Files uploaded successfully:', result);
                     return true;
+                } else {
+                    console.error('Upload error:', result.error);
+                    return false;
                 }
             } catch (error) {
                 console.error('Upload error:', error);
@@ -788,6 +846,31 @@
             } catch (error) {
                 console.error('Run error:', error);
             }
+        }
+
+        function highlightGeneratedFileRow() {
+            if (!lastGeneratedFilename) {
+                return;
+            }
+            
+            // Find the row with the generated filename
+            const rows = document.querySelectorAll('#mainTable tbody tr[data-filename]');
+            const targetRow = Array.from(rows).find(row => 
+                row.getAttribute('data-filename') === lastGeneratedFilename
+            );
+            
+            if (targetRow) {
+                // Add highlight class - CSS animation will handle the fade
+                targetRow.classList.add('file-row-highlight');
+                
+                // Remove class after animation completes (3s animation + small buffer)
+                setTimeout(() => {
+                    targetRow.classList.remove('file-row-highlight');
+                }, 3100);
+            }
+            
+            // Clear the stored filename after highlighting
+            lastGeneratedFilename = null;
         }
     </script>
 </body>

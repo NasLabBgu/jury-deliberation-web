@@ -83,15 +83,49 @@ def health_check():
 @app.route("/upload", methods=["POST"])
 def upload_files():
     try:
-        # Check if the request contains files
-        if 'files' not in request.files:
-            logger.warning("Upload attempt with no files")
-            return jsonify({'error': 'No files provided'}), 400
+        # Get additional data about categories and weights
+        categories = request.form.getlist('categories')
+        weights = request.form.getlist('weights')
+        all_files_metadata_str = request.form.get('allFilesMetadata', '[]')
         
-        files = request.files.getlist('files')
-        if not files or all(f.filename == '' for f in files):
-            logger.warning("Upload attempt with empty files")
-            return jsonify({'error': 'No files selected'}), 400
+        try:
+            all_files_metadata = json.loads(all_files_metadata_str)
+        except:
+            all_files_metadata = []
+        
+        # Clear existing files first, but preserve generated files that are still referenced
+        logger.info("Clearing existing files...")
+        
+        # Get list of generated files that should be preserved
+        preserved_generated_files = [f['name'] for f in all_files_metadata if f.get('generated', False)]
+        logger.info(f"Preserving generated files: {preserved_generated_files}")
+        
+        # Clear juror directory (except preserved generated files)
+        if os.path.exists(JUROR_DIR):
+            for filename in os.listdir(JUROR_DIR):
+                if filename not in preserved_generated_files:
+                    filepath = os.path.join(JUROR_DIR, filename)
+                    if os.path.isfile(filepath):
+                        os.remove(filepath)
+                        logger.info(f"Deleted: {filepath}")
+                else:
+                    logger.info(f"Preserved generated file: {filename}")
+        
+        # Clear case directory (except preserved generated files)
+        if os.path.exists(CASE_DIR):
+            for filename in os.listdir(CASE_DIR):
+                if filename not in preserved_generated_files:
+                    filepath = os.path.join(CASE_DIR, filename)
+                    if os.path.isfile(filepath):
+                        os.remove(filepath)
+                        logger.info(f"Deleted: {filepath}")
+                else:
+                    logger.info(f"Preserved generated file: {filename}")
+        
+        logger.info("All existing files cleared (except preserved generated files).")
+        
+        # Check if the request contains files
+        files = request.files.getlist('files') if 'files' in request.files else []
         
         # Validate file types for security
         allowed_extensions = {'.yaml', '.yml', '.txt'}
@@ -101,31 +135,6 @@ def upload_files():
                 if ext not in allowed_extensions:
                     logger.warning(f"Rejected file with invalid extension: {file.filename}")
                     return jsonify({'error': f'Invalid file type: {ext}. Only .yaml, .yml, and .txt files are allowed.'}), 400
-        
-        # Get additional data about categories and weights
-        categories = request.form.getlist('categories')
-        weights = request.form.getlist('weights')
-        
-        # Clear existing files first
-        logger.info("Clearing existing files...")
-        
-        # Clear juror directory
-        if os.path.exists(JUROR_DIR):
-            for filename in os.listdir(JUROR_DIR):
-                filepath = os.path.join(JUROR_DIR, filename)
-                if os.path.isfile(filepath):
-                    os.remove(filepath)
-                    logger.info(f"Deleted: {filepath}")
-        
-        # Clear case directory
-        if os.path.exists(CASE_DIR):
-            for filename in os.listdir(CASE_DIR):
-                filepath = os.path.join(CASE_DIR, filename)
-                if os.path.isfile(filepath):
-                    os.remove(filepath)
-                    logger.info(f"Deleted: {filepath}")
-        
-        logger.info("All existing files cleared.")
         
         results = []
         
@@ -152,11 +161,39 @@ def upload_files():
                     'status': 'uploaded'
                 })
         
+        # Add preserved generated files to results
+        for file_metadata in all_files_metadata:
+            if file_metadata.get('generated', False):
+                filename = file_metadata['name']
+                category = file_metadata['category']
+                
+                # Check if file exists in the appropriate directory
+                target_dir = JUROR_DIR if category == 'juror' else CASE_DIR
+                filepath = os.path.join(target_dir, filename)
+                
+                if os.path.exists(filepath):
+                    results.append({
+                        'filename': filename,
+                        'category': category,
+                        'weight': file_metadata['weight'],
+                        'path': filepath,
+                        'status': 'preserved_generated'
+                    })
+                    logger.info(f"Preserved generated file: {filepath} (category: {category})")
+        
+        total_files = len(results)
+        uploaded_count = len([r for r in results if r['status'] == 'uploaded'])
+        preserved_count = len([r for r in results if r['status'] == 'preserved_generated'])
+        
+        message = f'Uploaded {uploaded_count} new files'
+        if preserved_count > 0:
+            message += f' and preserved {preserved_count} generated files'
+        
         return jsonify({
             'success': True,
             'uploaded_files': results,
             'temp_dir': TEMP_DIR,
-            'message': f'Cleared existing files and uploaded {len(results)} new files'
+            'message': message
         })
         
     except Exception as e:
@@ -564,11 +601,13 @@ def handle_start_interactive_generation(data):
         nlp_toolbox_dir = os.path.join(backend_dir, 'NLPAgentsToolbox')
         venv_python = os.path.join(nlp_toolbox_dir, '.venv', 'bin', 'python')
         mkbio_script = os.path.join(nlp_toolbox_dir, 'tools', 'mkbio.py')
+        rmbio_script = os.path.join(nlp_toolbox_dir, 'tools', 'rmbio.py')
         
         logger.info(f"Backend dir: {backend_dir}")
         logger.info(f"NLP toolbox dir: {nlp_toolbox_dir}")
         logger.info(f"Virtual env python: {venv_python}")
         logger.info(f"mkbio script: {mkbio_script}")
+        logger.info(f"rmbio script: {rmbio_script}")
         
         emit('terminal_output', {'data': f'Starting interactive juror generation for {juror_count} jurors...\r\n'})
         
@@ -586,6 +625,11 @@ def handle_start_interactive_generation(data):
         if not os.path.exists(mkbio_script):
             logger.error(f"mkbio.py not found at {mkbio_script}")
             emit('terminal_output', {'data': f'Error: mkbio.py not found at {mkbio_script}\r\n'})
+            return
+            
+        if not os.path.exists(rmbio_script):
+            logger.error(f"rmbio.py not found at {rmbio_script}")
+            emit('terminal_output', {'data': f'Error: rmbio.py not found at {rmbio_script}\r\n'})
             return
         
         logger.info("All paths exist, creating pseudo-terminal...")
@@ -613,6 +657,40 @@ def handle_start_interactive_generation(data):
                     logger.info("API key loaded from file (direct content)")
         else:
             logger.warning(f"API key file not found at {api_key_file}")
+        
+        # Run rmbio.py -A before starting the generation process
+        logger.info("Running rmbio.py -A to clean up before generation...")
+        emit('terminal_output', {'data': 'Cleaning up previous data with rmbio.py -A...\r\n'})
+        
+        try:
+            rmbio_result = subprocess.run(
+                [venv_python, rmbio_script, '-A'],
+                cwd=nlp_toolbox_dir,
+                env=env,
+                capture_output=True,
+                text=True,
+                timeout=30  # 30 second timeout
+            )
+            
+            if rmbio_result.returncode == 0:
+                logger.info("rmbio.py -A completed successfully")
+                emit('terminal_output', {'data': 'Cleanup completed successfully\r\n'})
+            else:
+                logger.warning(f"rmbio.py -A returned code {rmbio_result.returncode}")
+                emit('terminal_output', {'data': f'Cleanup completed with warnings (exit code: {rmbio_result.returncode})\r\n'})
+                
+            # Log any output from rmbio
+            if rmbio_result.stdout:
+                logger.info(f"rmbio stdout: {rmbio_result.stdout}")
+            if rmbio_result.stderr:
+                logger.info(f"rmbio stderr: {rmbio_result.stderr}")
+                
+        except subprocess.TimeoutExpired:
+            logger.error("rmbio.py -A timed out")
+            emit('terminal_output', {'data': 'Cleanup timed out, proceeding anyway...\r\n'})
+        except Exception as e:
+            logger.error(f"Error running rmbio.py -A: {e}")
+            emit('terminal_output', {'data': f'Cleanup error: {str(e)}, proceeding anyway...\r\n'})
         
         logger.info("Starting subprocess...")
         
