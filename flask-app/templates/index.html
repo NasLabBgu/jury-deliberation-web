@@ -494,15 +494,14 @@
             if (!terminalInput || !socket) return;
             
             const input = terminalInput.value;
-            if (input.trim()) {
-                // Send input to server
-                socket.emit('terminal_input', {
-                    input: input + '\n'  // Add newline
-                });
-                
-                // Clear input field
-                terminalInput.value = '';
-            }
+            // Allow empty input (just pressing Enter is valid for some prompts)
+            // Send input to server
+            socket.emit('terminal_input', {
+                input: input + '\n'  // Add newline
+            });
+            
+            // Clear input field
+            terminalInput.value = '';
         }
         
         // Allow sending input with Enter key
@@ -528,10 +527,7 @@
             // Remove "no files" row if present
             removeNoFilesRow();
             
-            // Add to uploaded files list
-            uploadedFiles.push(fileObj);
-            
-            // Add file row (will default to "juror" since it's a .yaml file)
+            // Add file row FIRST (which will also add to uploadedFiles)
             addFileRow(fileObj);
             
             // Update row visibility

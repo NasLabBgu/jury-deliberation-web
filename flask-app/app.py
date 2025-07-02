@@ -780,8 +780,20 @@ def move_generated_file(session_id):
         nlp_toolbox_dir = terminal_info['nlp_toolbox_dir']
         juror_count = terminal_info['juror_count']
         
-        jurors_yaml_source = os.path.join(nlp_toolbox_dir, 'jurors.yaml')
-        if os.path.exists(jurors_yaml_source):
+        # Check both possible locations for jurors.yaml
+        possible_locations = [
+            os.path.join(nlp_toolbox_dir, 'build', 'jurors.yaml'),  # build/ subdirectory
+            os.path.join(nlp_toolbox_dir, 'jurors.yaml')            # root directory
+        ]
+        
+        jurors_yaml_source = None
+        for location in possible_locations:
+            if os.path.exists(location):
+                jurors_yaml_source = location
+                logger.info(f"Found jurors.yaml at: {location}")
+                break
+        
+        if jurors_yaml_source:
             filename = f"generated_jurors_{int(time.time())}.yaml"
             jurors_yaml_dest = os.path.join(JUROR_DIR, filename)
             shutil.copy2(jurors_yaml_source, jurors_yaml_dest)
@@ -789,6 +801,17 @@ def move_generated_file(session_id):
             socketio.emit('terminal_output', {'data': f'Generated jurors saved as {filename}\r\n'}, room=session_id)
             socketio.emit('generation_completed', {'filename': filename, 'count': juror_count}, room=session_id)
         else:
+            # Debug: List files in both locations
+            logger.warning("jurors.yaml not found, checking directories...")
+            for check_dir in [nlp_toolbox_dir, os.path.join(nlp_toolbox_dir, 'build')]:
+                if os.path.exists(check_dir):
+                    try:
+                        files = os.listdir(check_dir)
+                        logger.info(f"Files in {check_dir}: {files}")
+                        socketio.emit('terminal_output', {'data': f'Files in {check_dir}: {files}\r\n'}, room=session_id)
+                    except Exception as e:
+                        logger.error(f"Error listing {check_dir}: {e}")
+            
             socketio.emit('terminal_output', {'data': 'Warning: jurors.yaml not found after generation\r\n'}, room=session_id)
             
     except Exception as e:
