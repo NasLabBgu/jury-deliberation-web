@@ -641,7 +641,7 @@ def handle_start_interactive_generation(data):
         # Set up environment variables for the process
         env = os.environ.copy()
         
-        # Read API key from the toolbox api_key file
+        # Read API key from the toolbox api_key file or environment variable
         api_key_file = os.path.join(nlp_toolbox_dir, 'api_key')
         if os.path.exists(api_key_file):
             with open(api_key_file, 'r') as f:
@@ -650,13 +650,19 @@ def handle_start_interactive_generation(data):
                 if content.startswith("export OPENAI_API_KEY="):
                     api_key = content.split("'")[1] if "'" in content else content.split("=")[1].strip('"')
                     env['OPENAI_API_KEY'] = api_key
-                    emit('terminal_output', {'data': 'API key loaded successfully\r\n'})
+                    emit('terminal_output', {'data': 'API key loaded from file\r\n'})
                     logger.info("API key loaded from file")
                 else:
                     env['OPENAI_API_KEY'] = content
                     logger.info("API key loaded from file (direct content)")
+        elif 'OPENAI_API_KEY' in os.environ:
+            # Use environment variable (for Cloud Run deployment)
+            env['OPENAI_API_KEY'] = os.environ['OPENAI_API_KEY']
+            emit('terminal_output', {'data': 'API key loaded from environment\r\n'})
+            logger.info("API key loaded from environment variable")
         else:
-            logger.warning(f"API key file not found at {api_key_file}")
+            logger.warning(f"API key not found in file {api_key_file} or environment")
+            emit('terminal_output', {'data': 'Warning: No API key found\r\n'})
         
         # Run rmbio.py -A before starting the generation process
         logger.info("Running rmbio.py -A to clean up before generation...")
