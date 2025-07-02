@@ -486,8 +486,17 @@ def generate_jurors():
                     yield f"data: {json.dumps({'status': 'output', 'message': f'mkbio stderr: {stderr_output.strip()}'})}\n\n"
                 
                 if process.returncode != 0:
-                    yield f"data: {json.dumps({'status': 'error', 'message': f'mkbio.py failed with return code {process.returncode}'})}\n\n"
-                    return
+                    if process.returncode is None:
+                        # Check if the database file was created despite the process crashing
+                        db_file = os.path.join(nlp_toolbox_dir, 'build', 'juror.db')
+                        if os.path.exists(db_file):
+                            yield f"data: {json.dumps({'status': 'warning', 'message': 'mkbio.py process terminated abnormally, but database file was created. Proceeding...'})}\n\n"
+                        else:
+                            yield f"data: {json.dumps({'status': 'error', 'message': 'mkbio.py process crashed or was terminated unexpectedly and no database was created'})}\n\n"
+                            return
+                    else:
+                        yield f"data: {json.dumps({'status': 'error', 'message': f'mkbio.py failed with return code {process.returncode}'})}\n\n"
+                        return
                 
                 yield f"data: {json.dumps({'status': 'output', 'message': 'mkbio.py completed successfully'})}\n\n"
                 
@@ -516,14 +525,39 @@ def generate_jurors():
                 if stderr_output:
                     yield f"data: {json.dumps({'status': 'output', 'message': f'lsbio stderr: {stderr_output.strip()}'})}\n\n"
                 
-                if process.returncode != 0:
-                    yield f"data: {json.dumps({'status': 'error', 'message': f'lsbio.py failed with return code {process.returncode}'})}\n\n"
-                    return
+                # Check the return code properly
+                if process.returncode is None:
+                    # Process is still running or terminated abnormally
+                    # Make sure it's terminated
+                    try:
+                        process.terminate()
+                        process.wait(timeout=5)
+                    except:
+                        pass
+                    yield f"data: {json.dumps({'status': 'warning', 'message': 'lsbio.py process may have terminated abnormally, checking output file...'})}\n\n"
+                    
+                    # Check if the YAML file was created successfully
+                    yaml_path = os.path.join(nlp_toolbox_dir, 'build', 'jurors.yaml')
+                    if os.path.exists(yaml_path):
+                        yield f"data: {json.dumps({'status': 'output', 'message': f'YAML file found at {yaml_path}, continuing...'})}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'status': 'error', 'message': 'lsbio.py failed: no output file was created.'})}\n\n"
+                        return
+                elif process.returncode != 0:
+                    yield f"data: {json.dumps({'status': 'warning', 'message': f'lsbio.py returned non-zero exit code {process.returncode}, checking output file...'})}\n\n"
+                    
+                    # Check if the YAML file was created successfully despite the error
+                    yaml_path = os.path.join(nlp_toolbox_dir, 'build', 'jurors.yaml')
+                    if os.path.exists(yaml_path):
+                        yield f"data: {json.dumps({'status': 'output', 'message': f'YAML file found at {yaml_path}, continuing despite error...'})}\n\n"
+                    else:
+                        yield f"data: {json.dumps({'status': 'error', 'message': f'lsbio.py failed with return code {process.returncode} and no output file was created.'})}\n\n"
+                        return
                     
                 yield f"data: {json.dumps({'status': 'output', 'message': 'lsbio.py completed successfully'})}\n\n"
                 
                 # Step 3: Move jurors.yaml to temp directory
-                jurors_yaml_source = os.path.join(nlp_toolbox_dir, 'jurors.yaml')
+                jurors_yaml_source = os.path.join(nlp_toolbox_dir, 'build', 'jurors.yaml')
                 yield f"data: {json.dumps({'status': 'output', 'message': f'Looking for jurors.yaml at: {jurors_yaml_source}'})}\n\n"
                 
                 if os.path.exists(jurors_yaml_source):
@@ -534,6 +568,12 @@ def generate_jurors():
                     yield f"data: {json.dumps({'status': 'output', 'message': f'Generated jurors saved as {filename}'})}\n\n"
                     yield f"data: {json.dumps({'status': 'completed', 'message': f'Successfully generated {juror_count} jurors', 'filename': filename})}\n\n"
                 else:
+                        # Check in build directory as well
+                    build_dir_path = os.path.join(nlp_toolbox_dir, 'build')
+                    if os.path.exists(build_dir_path):
+                        build_files = os.listdir(build_dir_path)
+                        yield f"data: {json.dumps({'status': 'output', 'message': f'Files in build directory: {build_files}'})}\n\n"
+                    
                     # List files in the directory to help debug
                     try:
                         files_in_dir = os.listdir(nlp_toolbox_dir)
@@ -825,10 +865,17 @@ def handle_start_interactive_generation(data):
                 if return_code == 0:
                     socketio.emit('terminal_output', {'data': '\r\nmkbio.py completed successfully. Starting lsbio.py...\r\n'}, room=session_id)
                     run_lsbio_phase(session_id)
+                elif return_code is None:
+                    # Check if the database file was created despite the process crashing
+                    db_file = os.path.join(nlp_toolbox_dir, 'build', 'juror.db')
+                    if os.path.exists(db_file):
+                        socketio.emit('terminal_output', {'data': '\r\nmkbio.py process terminated abnormally, but database file was created. Proceeding to lsbio.py...\r\n'}, room=session_id)
+                        run_lsbio_phase(session_id)
+                    else:
+                        error_msg = '\r\nmkbio.py process crashed or was terminated unexpectedly\r\n'
+                        socketio.emit('terminal_output', {'data': error_msg}, room=session_id)
                 else:
                     error_msg = f'\r\nmkbio.py failed with return code {return_code}\r\n'
-                    if return_code is None:
-                        error_msg = '\r\nmkbio.py process crashed or was terminated unexpectedly\r\n'
                     socketio.emit('terminal_output', {'data': error_msg}, room=session_id)
                     
                     # Try to get more error information by running a simpler test
@@ -943,6 +990,18 @@ def run_lsbio_phase(session_id):
                     socketio.emit('terminal_output', {'data': '\r\nlsbio.py completed successfully.\r\n'}, room=session_id)
                     # Move jurors.yaml to temp directory
                     move_generated_file(session_id)
+                elif process.returncode is None:
+                    # Process terminated abnormally but may have completed successfully
+                    socketio.emit('terminal_output', {'data': '\r\nlsbio.py process terminated abnormally, but may have completed successfully. Checking output...\r\n'}, room=session_id)
+                    
+                    # Check if the YAML file was created successfully
+                    yaml_path = os.path.join(nlp_toolbox_dir, 'build', 'jurors.yaml')
+                    if os.path.exists(yaml_path):
+                        socketio.emit('terminal_output', {'data': f'\r\nYAML file found at {yaml_path}, proceeding with execution.\r\n'}, room=session_id)
+                        # Move jurors.yaml to temp directory
+                        move_generated_file(session_id)
+                    else:
+                        socketio.emit('terminal_output', {'data': '\r\nlsbio.py failed: no output file was created.\r\n'}, room=session_id)
                 else:
                     socketio.emit('terminal_output', {'data': f'\r\nlsbio.py failed with return code {process.returncode}\r\n'}, room=session_id)
                 
