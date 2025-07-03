@@ -292,41 +292,18 @@
                 <div id="inputSection">
                     <p>How many jurors would you like to generate?</p>
                     <input type="number" id="modalJurorCount" min="1" max="20" value="5">
-                    <div style="margin-top: 1rem; padding: 0.5rem; background: transparent; border: 1px solid var(--pico-muted-border-color); border-radius: 4px; font-size: 0.9em;">
+                    <div class="info-note">
                         <strong>Note:</strong> The online generation tool is in beta testing. <br>
                         Some features such as customizable presented distribution are not available online. 
                     </div>
                 </div>
                 <div id="terminalSection" style="display: none;">
-                    <div id="terminalOutput" style="
-                        background: #000;
-                        color: #fff;
-                        font-family: monospace;
-                        padding: 1rem;
-                        height: 280px;
-                        overflow-y: auto;
-                        border-radius: 4px;
-                        white-space: pre-wrap;
-                        font-size: 14px;
-                    "></div>
-                    <div style="display: flex; margin-top: 0.5rem;">
-                        <input type="text" id="terminalInput" placeholder="Type your response here..." style="
-                            flex: 1;
-                            background: #333;
-                            color: #fff;
-                            border: 1px solid #555;
-                            padding: 0.5rem;
-                            font-family: monospace;
-                            border-radius: 4px;
-                        ">
-                        <button onclick="sendTerminalInput()" style="
-                            margin-left: 0.5rem;
-                            padding: 0.5rem 1rem;
-                            border-radius: 4px;
-                            cursor: pointer;
-                        ">Send</button>
+                    <div id="terminalOutput"></div>
+                    <div class="terminal-input-container">
+                        <input type="text" id="terminalInput" placeholder="Type your response here...">
+                        <button onclick="sendTerminalInput()">Send</button>
                     </div>
-                    <div style="margin-top: 0.5rem; font-size: 0.8em; color: #666;">
+                    <div class="terminal-help">
                         Common responses: <kbd>A</kbd> (Accept), <kbd>n</kbd> (New suggestion), <kbd>e</kbd> (Enter custom), <kbd>y</kbd>/<kbd>N</kbd> (Yes/No)
                     </div>
                 </div>
