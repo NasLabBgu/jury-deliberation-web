@@ -1596,3 +1596,250 @@ def debug_temp_dirs():
         debug_info['error'] = str(e)
     
     return jsonify(debug_info)
+
+@app.route('/debug-filesystem')
+def debug_filesystem():
+    """Debug endpoint to browse the entire filesystem structure"""
+    path = request.args.get('path', '/tmp')
+    
+    debug_info = {
+        'timestamp': time.time(),
+        'requested_path': path,
+        'exists': False,
+        'is_directory': False,
+        'contents': [],
+        'parent_directory': None,
+        'breadcrumb': []
+    }
+    
+    try:
+        # Normalize and validate path
+        normalized_path = os.path.normpath(path)
+        debug_info['normalized_path'] = normalized_path
+        
+        # Check if path exists
+        if os.path.exists(normalized_path):
+            debug_info['exists'] = True
+            debug_info['is_directory'] = os.path.isdir(normalized_path)
+            
+            # Generate breadcrumb
+            path_parts = normalized_path.split('/')
+            breadcrumb = []
+            current = ''
+            for part in path_parts:
+                if part:  # Skip empty parts
+                    current = os.path.join(current, part) if current else '/' + part
+                    breadcrumb.append({'name': part, 'path': current})
+                elif not current:  # Root
+                    current = '/'
+                    breadcrumb.append({'name': 'root', 'path': '/'})
+            debug_info['breadcrumb'] = breadcrumb
+            
+            # Get parent directory
+            parent = os.path.dirname(normalized_path)
+            if parent != normalized_path:  # Avoid infinite loop at root
+                debug_info['parent_directory'] = parent
+            
+            if debug_info['is_directory']:
+                try:
+                    items = os.listdir(normalized_path)
+                    contents = []
+                    
+                    for item in sorted(items):
+                        item_path = os.path.join(normalized_path, item)
+                        try:
+                            stat_info = os.stat(item_path)
+                            item_info = {
+                                'name': item,
+                                'path': item_path,
+                                'is_file': os.path.isfile(item_path),
+                                'is_directory': os.path.isdir(item_path),
+                                'size': stat_info.st_size if os.path.isfile(item_path) else None,
+                                'modified': stat_info.st_mtime,
+                                'permissions': oct(stat_info.st_mode)[-3:]
+                            }
+                            
+                            # For small text files, provide a preview
+                            if (os.path.isfile(item_path) and 
+                                item_info['size'] and 
+                                item_info['size'] < 5000 and
+                                item.lower().endswith(('.txt', '.yaml', '.yml', '.json', '.py', '.md', '.log'))):
+                                try:
+                                    with open(item_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                        item_info['preview'] = f.read(1000)  # First 1000 chars
+                                except Exception as e:
+                                    item_info['preview_error'] = str(e)
+                            
+                            contents.append(item_info)
+                            
+                        except Exception as e:
+                            contents.append({
+                                'name': item,
+                                'path': item_path,
+                                'error': str(e)
+                            })
+                    
+                    debug_info['contents'] = contents
+                    debug_info['total_items'] = len(contents)
+                    
+                except Exception as e:
+                    debug_info['directory_error'] = str(e)
+            else:
+                # It's a file, try to read it
+                try:
+                    stat_info = os.stat(normalized_path)
+                    debug_info['file_info'] = {
+                        'size': stat_info.st_size,
+                        'modified': stat_info.st_mtime,
+                        'permissions': oct(stat_info.st_mode)[-3:]
+                    }
+                    
+                    # Try to read file content if it's small and text-like
+                    if (stat_info.st_size < 50000 and 
+                        any(normalized_path.lower().endswith(ext) for ext in 
+                            ['.txt', '.yaml', '.yml', '.json', '.py', '.md', '.log', '.csv', '.conf'])):
+                        try:
+                            with open(normalized_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                debug_info['file_content'] = f.read()
+                        except Exception as e:
+                            debug_info['file_read_error'] = str(e)
+                    else:
+                        debug_info['file_too_large_or_binary'] = True
+                        
+                except Exception as e:
+                    debug_info['file_stat_error'] = str(e)
+        else:
+            debug_info['error'] = 'Path does not exist'
+            
+    except Exception as e:
+        debug_info['error'] = str(e)
+    
+    return jsonify(debug_info)
+
+@app.route('/debug-filesystem-browser')
+def debug_filesystem_browser():
+    """Web interface for browsing the filesystem"""
+    return """
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Filesystem Browser</title>
+        <style>
+            body { font-family: monospace; background: #1a1d23; color: #c2c7d0; padding: 20px; }
+            .breadcrumb { margin-bottom: 20px; }
+            .breadcrumb a { color: #01aaff; text-decoration: none; margin-right: 5px; }
+            .breadcrumb a:hover { text-decoration: underline; }
+            .item { margin: 5px 0; padding: 5px; border-radius: 3px; }
+            .item:hover { background: #2a2f3a; }
+            .directory { color: #79c0ff; font-weight: bold; }
+            .file { color: #c2c7d0; }
+            .size { color: #7b8495; font-size: 0.9em; margin-left: 10px; }
+            .preview { background: #11141a; padding: 10px; margin: 10px 0; border-radius: 5px; white-space: pre-wrap; max-height: 200px; overflow-y: auto; }
+            .error { color: #dc3545; }
+            .parent { color: #969eaf; }
+            input { background: #11141a; color: #c2c7d0; border: 1px solid #202632; padding: 5px; width: 400px; }
+            button { background: #0172ad; color: white; border: none; padding: 5px 10px; margin-left: 5px; }
+        </style>
+    </head>
+    <body>
+        <h1>Filesystem Browser</h1>
+        <div>
+            <input type="text" id="pathInput" placeholder="/tmp" value="/tmp">
+            <button onclick="browsePath()">Browse</button>
+            <button onclick="browsePath('/tmp')">Go to /tmp</button>
+            <button onclick="browsePath('/')">Go to Root</button>
+        </div>
+        
+        <div id="content"></div>
+        
+        <script>
+            function browsePath(path) {
+                if (path) {
+                    document.getElementById('pathInput').value = path;
+                }
+                
+                const inputPath = document.getElementById('pathInput').value || '/tmp';
+                fetch('/debug-filesystem?path=' + encodeURIComponent(inputPath))
+                    .then(response => response.json())
+                    .then(data => {
+                        displayContent(data);
+                    })
+                    .catch(error => {
+                        document.getElementById('content').innerHTML = '<div class="error">Error: ' + error + '</div>';
+                    });
+            }
+            
+            function displayContent(data) {
+                let html = '';
+                
+                if (data.error) {
+                    html += '<div class="error">Error: ' + data.error + '</div>';
+                    document.getElementById('content').innerHTML = html;
+                    return;
+                }
+                
+                // Breadcrumb
+                if (data.breadcrumb && data.breadcrumb.length > 0) {
+                    html += '<div class="breadcrumb">';
+                    data.breadcrumb.forEach(item => {
+                        html += '<a href="#" onclick="browsePath(\\'' + item.path + '\\')">' + item.name + '</a> / ';
+                    });
+                    html += '</div>';
+                }
+                
+                // Parent directory link
+                if (data.parent_directory) {
+                    html += '<div class="item parent"><a href="#" onclick="browsePath(\\'' + data.parent_directory + '\\')">.. (parent directory)</a></div>';
+                }
+                
+                // Current path info
+                html += '<div style="margin: 10px 0; color: #7b8495;">Path: ' + data.normalized_path + '</div>';
+                
+                if (data.is_directory && data.contents) {
+                    html += '<div style="margin: 10px 0; color: #7b8495;">Items: ' + data.total_items + '</div>';
+                    
+                    data.contents.forEach(item => {
+                        const className = item.is_directory ? 'directory' : 'file';
+                        const icon = item.is_directory ? '📁' : '📄';
+                        const size = item.size ? ' (' + formatBytes(item.size) + ')' : '';
+                        
+                        html += '<div class="item ' + className + '">';
+                        if (item.is_directory) {
+                            html += '<a href="#" onclick="browsePath(\\'' + item.path + '\\')">' + icon + ' ' + item.name + '</a>';
+                        } else {
+                            html += '<span onclick="browsePath(\\'' + item.path + '\\')" style="cursor: pointer;">' + icon + ' ' + item.name + '</span>';
+                        }
+                        html += '<span class="size">' + size + '</span>';
+                        html += '</div>';
+                        
+                        if (item.preview) {
+                            html += '<div class="preview">' + escapeHtml(item.preview) + '</div>';
+                        }
+                    });
+                } else if (!data.is_directory && data.file_content) {
+                    html += '<div class="preview">' + escapeHtml(data.file_content) + '</div>';
+                }
+                
+                document.getElementById('content').innerHTML = html;
+            }
+            
+            function formatBytes(bytes) {
+                if (bytes === 0) return '0 B';
+                const k = 1024;
+                const sizes = ['B', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(k));
+                return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+            }
+            
+            function escapeHtml(text) {
+                const div = document.createElement('div');
+                div.textContent = text;
+                return div.innerHTML;
+            }
+            
+            // Load /tmp by default
+            browsePath('/tmp');
+        </script>
+    </body>
+    </html>
+    """
