@@ -275,6 +275,7 @@
             <tr id="runRow" style="display: none;">
                 <td style="display: flex; justify-content: space-between; align-items: center;">
                     <button id="runButton" onclick="runProcess()">Run Process</button>
+                    <button id="stopButton" onclick="stopProcess()" style="display: none;">Stop Process</button>
                     <button type="button" style="display: none;" id="copyOutputButton" onclick="copyOutputToClipboard()">Copy output to clipboard</button>
                 </td>
             </tr>
@@ -362,6 +363,42 @@
         const state = {};
         let uploadedFiles = []; // Store file objects, not just filenames
         let lastGeneratedFilename = null; // Track the last generated file for highlighting
+        let currentEventSource = null; // Track the current process EventSource
+        let isProcessRunning = false; // Track if a process is currently running
+
+        // Process state management functions
+        function setProcessRunning(running) {
+            isProcessRunning = running;
+            const body = document.body;
+            const runButton = document.getElementById('runButton');
+            const stopButton = document.getElementById('stopButton');
+            
+            if (running) {
+                body.classList.add('process-running');
+                runButton.style.display = 'none';
+                stopButton.style.display = 'inline-block';
+            } else {
+                body.classList.remove('process-running');
+                runButton.style.display = 'inline-block';
+                stopButton.style.display = 'none';
+            }
+        }
+
+        function stopProcess() {
+            if (currentEventSource) {
+                currentEventSource.close();
+                currentEventSource = null;
+            }
+            
+            setProcessRunning(false);
+            
+            const outputArea = document.getElementById('outputArea');
+            if (outputArea) {
+                outputArea.innerHTML += `\n[STOPPED] Process stopped by user\n`;
+            }
+            
+            console.log('Process stopped by user');
+        }
 
         document.addEventListener('DOMContentLoaded', function() {
             console.log('DOM loaded, setting up file upload');
@@ -954,9 +991,18 @@
         }
 
         async function runProcess() {
+            // Prevent multiple simultaneous processes
+            if (isProcessRunning) {
+                console.log('Process already running');
+                return;
+            }
+
             // First upload files
             const uploadSuccess = await uploadFilesToServer();
             if (!uploadSuccess) return;
+
+            // Set process as running
+            setProcessRunning(true);
 
             // Get form values
             const repeatCount = document.getElementById('repeatCount').value;
@@ -1005,13 +1051,13 @@
                 outputArea.innerHTML = '';
                 
                 // Use Server-Sent Events to stream notebook execution
-                const eventSource = new EventSource('/run_notebook?' + new URLSearchParams({
+                currentEventSource = new EventSource('/run_notebook?' + new URLSearchParams({
                     repeat_count: parseInt(repeatCount),
                     repeat_mode: repeatMode,
                     evaluation_options: JSON.stringify(evaluationOptions)
                 }));
                 
-                eventSource.onmessage = function(event) {
+                currentEventSource.onmessage = function(event) {
                     try {
                         const data = JSON.parse(event.data);
                         
@@ -1022,10 +1068,14 @@
                             outputArea.scrollTop = outputArea.scrollHeight;
                         } else if (data.status === 'completed') {
                             outputArea.innerHTML += `[COMPLETED] ${data.message}\n`;
-                            eventSource.close();
+                            currentEventSource.close();
+                            currentEventSource = null;
+                            setProcessRunning(false);
                         } else if (data.status === 'error') {
                             outputArea.innerHTML += `[ERROR] ${data.message}\n`;
-                            eventSource.close();
+                            currentEventSource.close();
+                            currentEventSource = null;
+                            setProcessRunning(false);
                         }
                     } catch (e) {
                         console.error('Error parsing SSE data:', e);
@@ -1033,14 +1083,21 @@
                     }
                 };
                 
-                eventSource.onerror = function(event) {
+                currentEventSource.onerror = function(event) {
                     console.error('SSE error:', event);
                     outputArea.innerHTML += `[ERROR] Connection error occurred\n`;
-                    eventSource.close();
+                    currentEventSource.close();
+                    currentEventSource = null;
+                    setProcessRunning(false);
                 };
                 
             } catch (error) {
                 console.error('Run error:', error);
+                setProcessRunning(false);
+                const outputArea = document.getElementById('outputArea');
+                if (outputArea) {
+                    outputArea.innerHTML += `[ERROR] Failed to start process: ${error.message}\n`;
+                }
             }
         }
 

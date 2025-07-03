@@ -847,6 +847,77 @@ dialog input[type="number"]:focus {
     border-color: var(--pico-form-element-active-border-color) !important;
 }
 
-dialog button {
-    font-family: var(--pico-font-family) !important;
+/* Terminal styling for process output */
+#terminalOutput {
+    background: #000 !important;
+    color: #fff !important;
+    font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace !important;
+    padding: 1rem !important;
+    height: 280px !important;
+    overflow-y: auto !important;
+    border-radius: var(--pico-border-radius) !important;
+    white-space: pre-wrap !important;
+    font-size: 14px !important;
+    border: 1px solid #333 !important;
+}
+
+/* Stop Process button styling */
+#stopButton {
+    background-color: #dc3545 !important; /* Red background for stop button */
+    border-color: #dc3545 !important;
+    color: white !important;
+}
+
+#stopButton:hover {
+    background-color: #c82333 !important; /* Darker red on hover */
+    border-color: #c82333 !important;
+}
+
+/* Disabled state for elements when process is running */
+.process-running button:not(#stopButton):not(#copyOutputButton),
+.process-running input,
+.process-running label {
+    opacity: 0.5 !important;
+    pointer-events: none !important;
+    cursor: not-allowed !important;
+}
+
+.process-running button:not(#stopButton):not(#copyOutputButton):hover,
+.process-running input:hover,
+.process-running label:hover {
+    cursor: not-allowed !important;
+}
+
+/* Ensure disabled elements show not-allowed cursor even on children */
+.process-running button:not(#stopButton):not(#copyOutputButton) *,
+.process-running input *,
+.process-running label * {
+    cursor: not-allowed !important;
+}
+
+/* Table styling when process is running */
+.process-running #mainTable {
+    position: relative;
+}
+
+.process-running #mainTable::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.1);
+    pointer-events: none;
+    z-index: 1;
+}
+
+/* Keep the stop button and copy button clickable */
+.process-running #stopButton,
+.process-running #copyOutputButton {
+    position: relative;
+    z-index: 2;
+    opacity: 1 !important;
+    pointer-events: auto !important;
+    cursor: pointer !important;
 }
