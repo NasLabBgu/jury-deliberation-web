@@ -1507,3 +1507,92 @@ def debug_nlp_toolbox():
         debug_info['mkbio_help_test'] = {'error': str(e)}
     
     return jsonify(debug_info)
+
+@app.route('/debug-temp-dirs')
+def debug_temp_dirs():
+    """Debug endpoint to inspect temporary directories and their contents"""
+    debug_info = {
+        'timestamp': time.time(),
+        'temp_root': '/tmp',
+        'temp_directories': [],
+        'jury_download_dirs': [],
+        'working_directory': os.getcwd()
+    }
+    
+    try:
+        # List all /tmp contents
+        if os.path.exists('/tmp'):
+            temp_contents = os.listdir('/tmp')
+            debug_info['temp_contents'] = temp_contents
+            
+            # Find jury download directories
+            jury_dirs = [d for d in temp_contents if d.startswith('jury_downloads_')]
+            debug_info['jury_download_dirs'] = jury_dirs
+            
+            # Inspect each jury download directory
+            for jury_dir in jury_dirs:
+                jury_path = os.path.join('/tmp', jury_dir)
+                try:
+                    jury_info = {
+                        'name': jury_dir,
+                        'path': jury_path,
+                        'exists': os.path.exists(jury_path),
+                        'is_directory': os.path.isdir(jury_path),
+                        'contents': []
+                    }
+                    
+                    if os.path.isdir(jury_path):
+                        jury_contents = os.listdir(jury_path)
+                        jury_info['contents'] = jury_contents
+                        
+                        # Get details for each file/folder in jury directory
+                        detailed_contents = []
+                        for item in jury_contents:
+                            item_path = os.path.join(jury_path, item)
+                            try:
+                                item_info = {
+                                    'name': item,
+                                    'path': item_path,
+                                    'is_file': os.path.isfile(item_path),
+                                    'is_directory': os.path.isdir(item_path),
+                                    'size': os.path.getsize(item_path) if os.path.isfile(item_path) else None
+                                }
+                                
+                                # If it's a file, try to read first few lines
+                                if os.path.isfile(item_path) and item_info['size'] and item_info['size'] < 10000:
+                                    try:
+                                        with open(item_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                            item_info['preview'] = f.read(500)  # First 500 chars
+                                    except Exception as e:
+                                        item_info['preview_error'] = str(e)
+                                
+                                # If it's a directory, list its contents
+                                if os.path.isdir(item_path):
+                                    try:
+                                        item_info['subdirectory_contents'] = os.listdir(item_path)
+                                    except Exception as e:
+                                        item_info['subdirectory_error'] = str(e)
+                                
+                                detailed_contents.append(item_info)
+                            except Exception as e:
+                                detailed_contents.append({
+                                    'name': item,
+                                    'error': str(e)
+                                })
+                        
+                        jury_info['detailed_contents'] = detailed_contents
+                    
+                    debug_info['temp_directories'].append(jury_info)
+                    
+                except Exception as e:
+                    debug_info['temp_directories'].append({
+                        'name': jury_dir,
+                        'error': str(e)
+                    })
+        else:
+            debug_info['temp_error'] = '/tmp directory does not exist'
+            
+    except Exception as e:
+        debug_info['error'] = str(e)
+    
+    return jsonify(debug_info)
