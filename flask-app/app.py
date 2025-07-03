@@ -1345,10 +1345,6 @@ if __name__ == "__main__":
 @app.route('/debug-files')
 def debug_files():
     """Debug endpoint to check what files exist in the container"""
-    # Security: Only enable in debug mode
-    if not os.environ.get('DEBUG_MODE', 'false').lower() == 'true':
-        return jsonify({'error': 'Debug endpoints are disabled in production'}), 403
-        
     import os
     debug_info = {
         'working_directory': os.getcwd(),
@@ -1406,10 +1402,6 @@ def debug_files():
 @app.route('/debug-nlp-toolbox')
 def debug_nlp_toolbox():
     """Debug endpoint to test NLPAgentsToolbox components"""
-    # Security: Only enable in debug mode
-    if not os.environ.get('DEBUG_MODE', 'false').lower() == 'true':
-        return jsonify({'error': 'Debug endpoints are disabled in production'}), 403
-        
     debug_info = {
         'timestamp': time.time(),
         'working_directory': os.getcwd(),
@@ -1519,10 +1511,6 @@ def debug_nlp_toolbox():
 @app.route('/debug-temp-dirs')
 def debug_temp_dirs():
     """Debug endpoint to inspect temporary directories and their contents"""
-    # Security: Only enable in debug mode
-    if not os.environ.get('DEBUG_MODE', 'false').lower() == 'true':
-        return jsonify({'error': 'Debug endpoints are disabled in production'}), 403
-        
     debug_info = {
         'timestamp': time.time(),
         'temp_root': '/tmp',
@@ -1612,10 +1600,6 @@ def debug_temp_dirs():
 @app.route('/debug-filesystem')
 def debug_filesystem():
     """Debug endpoint to browse the filesystem structure (excludes sensitive files)"""
-    # Security: Only enable in debug mode
-    if not os.environ.get('DEBUG_MODE', 'false').lower() == 'true':
-        return jsonify({'error': 'Debug endpoints are disabled in production'}), 403
-        
     path = request.args.get('path', '/tmp')
     
     # Security: Block access to sensitive paths
@@ -1756,10 +1740,6 @@ def debug_filesystem():
 @app.route('/debug-filesystem-browser')
 def debug_filesystem_browser():
     """Web interface for browsing the filesystem"""
-    # Security: Only enable in debug mode
-    if not os.environ.get('DEBUG_MODE', 'false').lower() == 'true':
-        return jsonify({'error': 'Debug endpoints are disabled in production'}), 403
-        
     return """
     <!DOCTYPE html>
     <html>
