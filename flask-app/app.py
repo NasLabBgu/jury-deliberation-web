@@ -1788,6 +1788,7 @@ def debug_filesystem_browser():
             <input type="text" id="pathInput" placeholder="/tmp" value="/tmp">
             <button onclick="browsePath()">Browse</button>
             <button onclick="browsePath('/tmp')">Go to /tmp</button>
+            <button onclick="browsePath('/app')">Go to /app</button>
             <button onclick="browsePath('/')">Go to Root</button>
         </div>
         
