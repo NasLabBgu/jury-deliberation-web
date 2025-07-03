@@ -87,7 +87,7 @@ jobs:
             --max-instances 10 \
             --timeout 3600 \
             --execution-environment gen2 \
-            --set-env-vars FLASK_ENV=production,OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }},DEBUG_MODE=true \
+            --set-env-vars FLASK_ENV=production,OPENAI_API_KEY=${{ secrets.OPENAI_API_KEY }},GOOGLE_API_KEY=${{ secrets.GOOGLE_API_KEY }},DEBUG_MODE=false \
             --allow-unauthenticated
           
           echo "✅ Deployment completed!"

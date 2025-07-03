@@ -1345,6 +1345,10 @@ if __name__ == "__main__":
 @app.route('/debug-files')
 def debug_files():
     """Debug endpoint to check what files exist in the container"""
+    # Security: Only enable in debug mode
+    if not os.environ.get('DEBUG_MODE', 'false').lower() == 'true':
+        return jsonify({'error': 'Debug endpoints are disabled in production'}), 403
+        
     import os
     debug_info = {
         'working_directory': os.getcwd(),
@@ -1402,6 +1406,10 @@ def debug_files():
 @app.route('/debug-nlp-toolbox')
 def debug_nlp_toolbox():
     """Debug endpoint to test NLPAgentsToolbox components"""
+    # Security: Only enable in debug mode
+    if not os.environ.get('DEBUG_MODE', 'false').lower() == 'true':
+        return jsonify({'error': 'Debug endpoints are disabled in production'}), 403
+        
     debug_info = {
         'timestamp': time.time(),
         'working_directory': os.getcwd(),
@@ -1511,6 +1519,10 @@ def debug_nlp_toolbox():
 @app.route('/debug-temp-dirs')
 def debug_temp_dirs():
     """Debug endpoint to inspect temporary directories and their contents"""
+    # Security: Only enable in debug mode
+    if not os.environ.get('DEBUG_MODE', 'false').lower() == 'true':
+        return jsonify({'error': 'Debug endpoints are disabled in production'}), 403
+        
     debug_info = {
         'timestamp': time.time(),
         'temp_root': '/tmp',
@@ -1599,8 +1611,18 @@ def debug_temp_dirs():
 
 @app.route('/debug-filesystem')
 def debug_filesystem():
-    """Debug endpoint to browse the entire filesystem structure"""
+    """Debug endpoint to browse the filesystem structure (excludes sensitive files)"""
+    # Security: Only enable in debug mode
+    if not os.environ.get('DEBUG_MODE', 'false').lower() == 'true':
+        return jsonify({'error': 'Debug endpoints are disabled in production'}), 403
+        
     path = request.args.get('path', '/tmp')
+    
+    # Security: Block access to sensitive paths
+    sensitive_patterns = [
+        'api_key', 'secret', 'password', 'token', 'credential',
+        '.env', 'config', 'private', '.ssh', '.pem', '.key'
+    ]
     
     debug_info = {
         'timestamp': time.time(),
@@ -1609,12 +1631,18 @@ def debug_filesystem():
         'is_directory': False,
         'contents': [],
         'parent_directory': None,
-        'breadcrumb': []
+        'breadcrumb': [],
+        'security_note': 'Sensitive files are filtered for security'
     }
     
     try:
         # Normalize and validate path
         normalized_path = os.path.normpath(path)
+        
+        # Security check: Don't allow access to sensitive file patterns
+        if any(pattern in normalized_path.lower() for pattern in sensitive_patterns):
+            debug_info['error'] = 'Access to sensitive files is restricted'
+            return jsonify(debug_info)
         debug_info['normalized_path'] = normalized_path
         
         # Check if path exists
@@ -1645,7 +1673,16 @@ def debug_filesystem():
                     items = os.listdir(normalized_path)
                     contents = []
                     
-                    for item in sorted(items):
+                    # Filter out sensitive files
+                    filtered_items = []
+                    for item in items:
+                        if not any(pattern in item.lower() for pattern in sensitive_patterns):
+                            filtered_items.append(item)
+                        else:
+                            # Log that we filtered out a sensitive file (for debugging)
+                            logger.info(f"Filtered sensitive file from debug browser: {item}")
+                    
+                    for item in sorted(filtered_items):
                         item_path = os.path.join(normalized_path, item)
                         try:
                             stat_info = os.stat(item_path)
@@ -1719,6 +1756,10 @@ def debug_filesystem():
 @app.route('/debug-filesystem-browser')
 def debug_filesystem_browser():
     """Web interface for browsing the filesystem"""
+    # Security: Only enable in debug mode
+    if not os.environ.get('DEBUG_MODE', 'false').lower() == 'true':
+        return jsonify({'error': 'Debug endpoints are disabled in production'}), 403
+        
     return """
     <!DOCTYPE html>
     <html>
