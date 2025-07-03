@@ -1,6 +1,7 @@
 import os
 import tempfile
 import shutil
+import json as py_json
 import json
 import subprocess
 import threading
@@ -11,6 +12,8 @@ import pty
 import select
 import termios
 import fcntl
+import random
+import traceback
 from werkzeug.utils import secure_filename
 from flask import Flask, render_template, request, jsonify, Response
 from flask_socketio import SocketIO, emit
@@ -347,20 +350,21 @@ def run_notebook():
         def generate_execution_pairs():
             """Generate juror-case pairs based on repeat mode"""
             if repeat_mode == 'individual':
-                # Run each unique combination once, ignoring weights
+                # Run each unique combination repeat_count times
                 pairs = []
-                for juror_file in juror_files_info:
-                    for case_file in case_files_info:
-                        pairs.append({
-                            'juror_file': juror_file,
-                            'case_file': case_file,
-                            'run_number': len(pairs) + 1
-                        })
+                for repeat in range(total_rounds):
+                    for juror_file in juror_files_info:
+                        for case_file in case_files_info:
+                            pairs.append({
+                                'juror_file': juror_file,
+                                'case_file': case_file,
+                                'run_number': len(pairs) + 1,
+                                'repeat_iteration': repeat + 1
+                            })
                 return pairs
             
             else:  # overall mode
                 # Use weights to determine frequency of each file
-                import random
                 
                 # Create weighted lists
                 weighted_juror_list = []
@@ -412,7 +416,8 @@ def run_notebook():
                 
                 # Log the execution plan
                 if repeat_mode == 'individual':
-                    yield f"data: {json.dumps({'status': 'output', 'message': f'Running each unique juror-case combination once ({total_pairs} total combinations)'})}\n\n"
+                    unique_combinations = len(juror_files_info) * len(case_files_info)
+                    yield f"data: {json.dumps({'status': 'output', 'message': f'Running each of {unique_combinations} unique juror-case combinations {total_rounds} times ({total_pairs} total runs)'})}\n\n"
                 else:
                     yield f"data: {json.dumps({'status': 'output', 'message': f'Running {total_rounds} total deliberations with weighted selection'})}\n\n"
                 
@@ -422,7 +427,14 @@ def run_notebook():
                     case_file = pair['case_file']
                     run_number = pair['run_number']
                     
-                    run_header = f'\n=== Run {run_number}/{total_pairs} ==='
+                    if repeat_mode == 'individual' and 'repeat_iteration' in pair:
+                        repeat_iteration = pair['repeat_iteration']
+                        unique_combinations = len(juror_files_info) * len(case_files_info)
+                        combination_number = ((run_number - 1) % unique_combinations) + 1
+                        run_header = f'\n=== Run {run_number}/{total_pairs} (Combination {combination_number}, Repeat {repeat_iteration}/{total_rounds}) ==='
+                    else:
+                        run_header = f'\n=== Run {run_number}/{total_pairs} ==='
+                        
                     yield f"data: {json.dumps({'status': 'output', 'message': run_header})}\n\n"
                     juror_name = juror_file['name']
                     case_name = case_file['name']
