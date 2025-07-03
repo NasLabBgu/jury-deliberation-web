@@ -384,20 +384,43 @@
             }
         }
 
-        function stopProcess() {
+        async function stopProcess() {
             if (currentEventSource) {
                 currentEventSource.close();
                 currentEventSource = null;
             }
             
-            setProcessRunning(false);
-            
-            const outputArea = document.getElementById('outputArea');
-            if (outputArea) {
-                outputArea.innerHTML += `\n[STOPPED] Process stopped by user\n`;
+            // Call server endpoint to stop the actual process
+            try {
+                const response = await fetch('/stop_process', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    }
+                });
+                
+                const result = await response.json();
+                
+                const outputArea = document.getElementById('outputArea');
+                if (outputArea) {
+                    if (result.success) {
+                        outputArea.innerHTML += `\n[STOPPED] ${result.message}\n`;
+                    } else {
+                        outputArea.innerHTML += `\n[STOP ERROR] ${result.error}\n`;
+                    }
+                }
+                
+                console.log('Stop process result:', result);
+                
+            } catch (error) {
+                console.error('Error stopping process:', error);
+                const outputArea = document.getElementById('outputArea');
+                if (outputArea) {
+                    outputArea.innerHTML += `\n[STOP ERROR] Failed to stop server process: ${error.message}\n`;
+                }
             }
             
-            console.log('Process stopped by user');
+            setProcessRunning(false);
         }
 
         document.addEventListener('DOMContentLoaded', function() {

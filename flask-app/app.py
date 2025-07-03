@@ -72,6 +72,10 @@ os.makedirs(CASE_DIR, exist_ok=True)
 print(f"Upload directory: {TEMP_DIR}")
 logger.info(f"Upload directory: {TEMP_DIR}")
 
+# Global variable to track running processes for termination
+current_running_processes = []
+process_lock = threading.Lock()
+
 @app.route("/", methods=["GET"])
 def index():
     """Main page"""
@@ -256,6 +260,37 @@ def run_process():
         return jsonify(result)
         
     except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route("/stop_process", methods=["POST"])
+def stop_process():
+    """Stop the currently running notebook execution"""
+    try:
+        with process_lock:
+            if current_running_processes:
+                logger.info(f"Stopping {len(current_running_processes)} running processes")
+                for process in current_running_processes:
+                    try:
+                        if process.poll() is None:  # Process is still running
+                            process.terminate()
+                            # Give it a moment to terminate gracefully
+                            try:
+                                process.wait(timeout=3)
+                            except subprocess.TimeoutExpired:
+                                # Force kill if it doesn't terminate gracefully
+                                process.kill()
+                                process.wait()
+                            logger.info(f"Process {process.pid} terminated")
+                    except Exception as e:
+                        logger.error(f"Error terminating process: {e}")
+                
+                current_running_processes.clear()
+                return jsonify({'success': True, 'message': 'All processes stopped'})
+            else:
+                return jsonify({'success': True, 'message': 'No processes running'})
+                
+    except Exception as e:
+        logger.error(f"Error stopping processes: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route("/run_notebook", methods=["GET"])
@@ -489,13 +524,24 @@ except Exception as e:
                         cwd=backend_dir
                     )
                     
-                    # Stream output line by line
-                    for line in iter(process.stdout.readline, ''):
-                        if line:
-                            yield f"data: {json.dumps({'status': 'output', 'message': line.strip()})}\n\n"
+                    # Register the process for potential termination
+                    with process_lock:
+                        current_running_processes.append(process)
                     
-                    # Wait for process to complete
-                    process.wait()
+                    try:
+                        # Stream output line by line
+                        for line in iter(process.stdout.readline, ''):
+                            if line:
+                                yield f"data: {json.dumps({'status': 'output', 'message': line.strip()})}\n\n"
+                        
+                        # Wait for process to complete
+                        process.wait()
+                        
+                    finally:
+                        # Always unregister the process when done
+                        with process_lock:
+                            if process in current_running_processes:
+                                current_running_processes.remove(process)
                     
                     # Clean up temporary script file
                     try:
