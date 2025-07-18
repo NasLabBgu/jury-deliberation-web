@@ -35,7 +35,6 @@ blinker>=1.7.0,<2.0.0
 
 # Additional production dependencies
 python-dotenv>=1.0.0,<2.0.0
-load-dotenv>=1.0.0
 
 # Jupyter/Notebook dependencies for backend processing
 ipython>=8.0.0,<9.0.0
