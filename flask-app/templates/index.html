@@ -238,6 +238,69 @@
             33% { background-color: #2a4b8d; }
             100% { background-color: transparent; }
         }
+        
+        /* Tooltip styles */
+        .tooltip {
+            position: relative;
+            display: inline-block;
+            margin-left: 8px;
+            cursor: help;
+        }
+        
+        .tooltip-icon {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background-color: #7b8495;
+            color: white;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: bold;
+            border: 1px solid #202632;
+        }
+        
+        .tooltip-icon:hover {
+            background-color: #01aaff;
+        }
+        
+        .tooltip-text {
+            visibility: hidden;
+            opacity: 0;
+            width: 280px;
+            background-color: #141720;
+            color: #c2c7d0;
+            text-align: left;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #202632;
+            position: absolute;
+            z-index: 1000;
+            bottom: 125%;
+            left: 50%;
+            margin-left: -140px;
+            font-size: 13px;
+            line-height: 1.4;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
+            transition: opacity 0.3s;
+        }
+        
+        .tooltip-text::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            margin-left: -5px;
+            border-width: 5px;
+            border-style: solid;
+            border-color: #141720 transparent transparent transparent;
+        }
+        
+        .tooltip:hover .tooltip-text {
+            visibility: visible;
+            opacity: 1;
+        }
        
     </style>
 </head>
@@ -252,12 +315,20 @@
                 <td>
                     <button type="button" id="uploadButton">Upload</button>
                     <button type="button" style="margin-left: 1rem;" id="generateButton" onclick="showGenerateModal()">Generate</button>
+                    <span class="tooltip">
+                        <span class="tooltip-icon">?</span>
+                        <span class="tooltip-text">At least one juror.yaml and one scene.txt file are needed for the simulation. You can upload these files, or generate a juror.yaml interactively</span>
+                    </span>
                     <input type="file" id="fileInput" style="display:none;" multiple onchange="handleFiles(event)">
                 </td>
             </tr>
             <tr id="deliberationRoundsRow" style="display: none;">
                 <td>
                     Amount of deliberation rounds in one repeat <input type="number" min="1" max="10" value="3" style="width:3em; margin-left: 0.5rem;" id="deliberationRounds">
+                    <span class="tooltip">
+                        <span class="tooltip-icon">?</span>
+                        <span class="tooltip-text">Number of discussion rounds within each court session</span>
+                    </span>
                 </td>
             </tr>
             <tr id="modelSelectionRow" style="display: none;">
@@ -278,14 +349,26 @@
                     <span style="margin-left: 1rem;">
                         <label><input type="radio" name="repeatMode" value="individual" checked onchange="updateWeightVisibility()"> each juror-case combination</label>
                         <label style="margin-left: 0.5rem;"><input type="radio" name="repeatMode" value="overall" onchange="updateWeightVisibility()"> overall</label>
+                        <span class="tooltip">
+                            <span class="tooltip-icon">?</span>
+                            <span class="tooltip-text">Individual: Amount of each unique juror-case pair (e.g. 2 repeats, 2 juror files, 3 case files = 12 runs). <br>Overall: Amount of all possible combinations with optional weight that sets the probability to pick weighted juror file from all juror files or to pick weighted case file from all case files, respectively.</span>
+                        </span>
                     </span>
                 </td>
             </tr>
             <tr id="runRow" style="display: none;">
                 <td style="display: flex; justify-content: space-between; align-items: center;">
-                    <button id="runButton" onclick="runProcess()">Run Process</button>
-                    <button id="stopButton" onclick="stopProcess()" style="display: none;">Stop Process</button>
-                    <button type="button" style="display: none;" id="copyOutputButton" onclick="copyOutputToClipboard()">Copy output to clipboard</button>
+                    <div style="display: flex; align-items: center;">
+                        <button id="runButton" onclick="runProcess()">Run Process</button>
+                        <span class="tooltip">
+                            <span class="tooltip-icon">?</span>
+                            <span class="tooltip-text">Start the jury deliberation simulation with your uploaded files and selected parameters. The process will run in the background and stream results in real-time. If the deliberation doesn't start immediately, wait a few seconds and click again and again (It may take a few tries to get the simulation started)</span>
+                        </span>
+                    </div>
+                    <div>
+                        <button id="stopButton" onclick="stopProcess()" style="display: none;">Stop Process</button>
+                        <button type="button" style="display: none;" id="copyOutputButton" onclick="copyOutputToClipboard()">Copy output to clipboard</button>
+                    </div>
                 </td>
             </tr>
         </tbody>
