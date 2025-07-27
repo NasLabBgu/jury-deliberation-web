@@ -264,14 +264,7 @@
                     </span>
                 </td>
             </tr>
-            <tr id="evaluateRow" style="display: none;">
-                <td>
-                    evaluate 
-                    <label><input type="checkbox" id="cb_participation"> participation</label>
-                    <label><input type="checkbox" id="cb_quality"> quality</label>
-                    <label><input type="checkbox" id="cb_arguments"> arguments</label>
-                </td>
-            </tr>
+
             <tr id="deliberationRoundsRow" style="display: none;">
                 <td>
                     amount of deliberation rounds <input type="number" min="1" max="10" value="3" style="width:3em; margin-left: 0.5rem;" id="deliberationRounds">
@@ -490,13 +483,11 @@
         function updateRowVisibility() {
             const hasFiles = uploadedFiles.length > 0;
             const repeatRow = document.getElementById('repeatRow');
-            const evaluateRow = document.getElementById('evaluateRow');
             const deliberationRoundsRow = document.getElementById('deliberationRoundsRow');
             const modelSelectionRow = document.getElementById('modelSelectionRow');
             const runRow = document.getElementById('runRow');
             
             if (repeatRow) repeatRow.style.display = hasFiles ? '' : 'none';
-            if (evaluateRow) evaluateRow.style.display = hasFiles ? '' : 'none';
             if (deliberationRoundsRow) deliberationRoundsRow.style.display = hasFiles ? '' : 'none';
             if (modelSelectionRow) modelSelectionRow.style.display = hasFiles ? '' : 'none';
             if (runRow) runRow.style.display = hasFiles ? '' : 'none';
@@ -1053,11 +1044,6 @@
             const repeatMode = repeatModeRadio ? repeatModeRadio.value : 'individual';
             const deliberationRounds = document.getElementById('deliberationRounds').value;
             const selectedModel = document.getElementById('modelSelection').value;
-            
-            const evaluationOptions = [];
-            if (document.getElementById('cb_participation').checked) evaluationOptions.push('participation');
-            if (document.getElementById('cb_quality').checked) evaluationOptions.push('quality');
-            if (document.getElementById('cb_arguments').checked) evaluationOptions.push('arguments');
 
             try {
                 console.log('Starting notebook execution...');
@@ -1100,8 +1086,7 @@
                     repeat_count: parseInt(repeatCount),
                     repeat_mode: repeatMode,
                     deliberation_rounds: parseInt(deliberationRounds),
-                    selected_model: selectedModel,
-                    evaluation_options: JSON.stringify(evaluationOptions)
+                    selected_model: selectedModel
                 }));
                 
                 currentEventSource.onmessage = function(event) {
