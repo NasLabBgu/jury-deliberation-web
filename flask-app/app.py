@@ -1769,6 +1769,7 @@ def debug_filesystem_browser():
             .item { margin: 5px 0; padding: 5px; border-radius: 3px; }
             .item:hover { background: #2a2f3a; }
             .directory { color: #ffffff; font-weight: bold; }
+            .item.directory { color: #ffffff; font-weight: bold; }
             .file { color: #c2c7d0; }
             .size { color: #7b8495; font-size: 0.9em; margin-left: 10px; }
             .preview { background: #11141a; padding: 10px; margin: 10px 0; border-radius: 5px; white-space: pre-wrap; max-height: 200px; overflow-y: auto; }

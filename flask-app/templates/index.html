@@ -314,10 +314,10 @@
             <tr id="uploadRow">
                 <td>
                     <button type="button" id="uploadButton">Upload</button>
-                    <button type="button" style="margin-left: 1rem;" id="generateButton" onclick="showGenerateModal()">Generate</button>
+                    <button type="button" style="margin-left: 0.6rem;" id="generateButton" onclick="showGenerateModal()">Generate</button>
                     <span class="tooltip">
                         <span class="tooltip-icon">?</span>
-                        <span class="tooltip-text">At least one juror.yaml and one scene.txt file are needed for the simulation. You can upload these files, or generate a juror.yaml interactively</span>
+                        <span class="tooltip-text">At least one juror file and one scenario file are needed for the simulation. Accepted file extensions are .yml, .yaml and .txt. You can upload these files and/or generate a juror.yaml interactively</span>
                     </span>
                     <input type="file" id="fileInput" style="display:none;" multiple onchange="handleFiles(event)">
                 </td>
@@ -333,13 +333,19 @@
             </tr>
             <tr id="modelSelectionRow" style="display: none;">
                 <td>
-                    AI model 
+                    AI model used in notebook
                     <select id="modelSelection" style="margin-left: 0.5rem; background-color: #11141a; color: #c2c7d0; border: 1px solid #202632; padding: 2px 5px;">
                         <option value="gemini-2.5-pro">Gemini 2.5 Pro (5 RPM, Most Capable)</option>
                         <option value="gemini-2.5-flash" selected>Gemini 2.5 Flash (10 RPM, Balanced)</option>
                         <option value="gemini-2.5-flash-lite">Gemini 2.5 Flash-Lite (15 RPM, Efficient)</option>
                         <option value="gemini-2.0-flash">Gemini 2.0 Flash (15 RPM, Large Context)</option>
                         <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash-Lite (30 RPM, Fastest)</option>
+                        <option disabled>──── Deprecated Models ────</option>
+                        <option value="gemini-1.5-pro">Gemini 1.5 Pro (DEPRECATED)</option>
+                        <option value="gemini-1.5-flash">Gemini 1.5 Flash (DEPRECATED)</option>
+                        <option value="gemini-1.0-pro">Gemini 1.0 Pro (DEPRECATED)</option>
+                        <option value="gemini-pro">Gemini Pro (LEGACY)</option>
+                        <option value="gemini-pro-vision">Gemini Pro Vision (LEGACY)</option>
                     </select>
                 </td>
             </tr>
@@ -351,7 +357,7 @@
                         <label style="margin-left: 0.5rem;"><input type="radio" name="repeatMode" value="overall" onchange="updateWeightVisibility()"> overall</label>
                         <span class="tooltip">
                             <span class="tooltip-icon">?</span>
-                            <span class="tooltip-text">Individual: Amount of each unique juror-case pair (e.g. 2 repeats, 2 juror files, 3 case files = 12 runs). <br>Overall: Amount of all possible combinations with optional weight that sets the probability to pick weighted juror file from all juror files or to pick weighted case file from all case files, respectively.</span>
+                            <span class="tooltip-text">Individual: Amount of each unique juror-case pairs (e.g. 2 repeats, 2 juror files, 3 case files = 12 runs). <br>Overall: Amount of all possible combinations with optional weight that sets the probability to pick weighted juror file from all juror files or to pick weighted case file from all case files, respectively.</span>
                         </span>
                     </span>
                 </td>
@@ -362,7 +368,7 @@
                         <button id="runButton" onclick="runProcess()">Run Process</button>
                         <span class="tooltip">
                             <span class="tooltip-icon">?</span>
-                            <span class="tooltip-text">Start the jury deliberation simulation with your uploaded files and selected parameters. The process will run in the background and stream results in real-time. If the deliberation doesn't start immediately, wait a few seconds and click again and again (It may take a few tries to get the simulation started)</span>
+                            <span class="tooltip-text">Start the jury deliberation simulation with your uploaded files and selected parameters. The process will run in the background and stream results in real-time. <br>If the deliberation doesn't start immediately, wait a few seconds and click again and again (It may take a few tries to get the simulation started). <br>If the deliberation doesn't start after multiple attempts, <a href="https://github.com/NasLabBgu/jury-deliberation-web/actions/workflows/deploy-to-gce.yml">re-trigger the deploy workflow</a>, wait a few minutes and try again</span>
                         </span>
                     </div>
                     <div>
