@@ -368,12 +368,13 @@
                         <button id="runButton" onclick="runProcess()">Run Process</button>
                         <span class="tooltip">
                             <span class="tooltip-icon">?</span>
-                            <span class="tooltip-text">Start the jury deliberation simulation with your uploaded files and selected parameters. The process will run in the background and stream results in real-time. <br>If the deliberation doesn't start immediately, wait a few seconds and click again and again (It may take a few tries to get the simulation started). <br>If the deliberation doesn't start after multiple attempts, re-trigger the deploy workflow on github (see link below), wait a few minutes and try again</span>
+                            <span class="tooltip-text">Start the jury deliberation simulation with your uploaded files and selected parameters. The process will run in the background and stream results in real-time. <br>If the deliberation doesn't start immediately, wait a few seconds and click again and again (It may take a few tries to get the simulation started). <br>If the deliberation doesn't start after multiple attempts, re-trigger the latest workflow on github (use the button below), wait a few minutes and try again</span>
                         </span>
                     </div>
                     <div>
                         <button id="stopButton" onclick="stopProcess()" style="display: none;">Stop Process</button>
                         <button type="button" style="display: none;" id="copyOutputButton" onclick="copyOutputToClipboard()">Copy output to clipboard</button>
+                        <button type="button" onclick="window.open('https://github.com/NasLabBgu/jury-deliberation-web/actions/workflows/deploy-to-gce.yml', '_blank')" style="margin-left: 1.0rem;">Restart latest workflow to clean this app</button>
                     </div>
                 </td>
             </tr>
@@ -1247,17 +1248,5 @@
             lastGeneratedFilename = null;
         }
     </script>
-
-    <!-- Footer -->
-    <footer style="text-align: left; padding: 2rem 0; margin-top: 3rem; border-top: 1px solid #202632; color: #7b8495; font-size: 0.9em;">
-        <p>
-            <a href="https://github.com/NasLabBgu/jury-deliberation-web/actions/workflows/deploy-to-gce.yml" 
-               target="_blank" 
-               rel="noopener noreferrer"
-               style="color: #01aaff; text-decoration: none;">
-                Restart latest workflow to clean app
-            </a>
-        </p>
-    </footer>
 </body>
 </html>
