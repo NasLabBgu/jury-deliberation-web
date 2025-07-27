@@ -255,19 +255,9 @@
                     <input type="file" id="fileInput" style="display:none;" multiple onchange="handleFiles(event)">
                 </td>
             </tr>
-            <tr id="repeatRow" style="display: none;">
-                <td>
-                    repeat <input type="number" min="1" value="10" style="width:3em; margin-left: 0.5rem; margin-right: 0.5rem;" id="repeatCount" oninput="updateTimesText()"> <span id="timesText">times</span>
-                    <span style="margin-left: 1rem;">
-                        <label><input type="radio" name="repeatMode" value="individual" checked onchange="updateWeightVisibility()"> each juror-case combination</label>
-                        <label style="margin-left: 0.5rem;"><input type="radio" name="repeatMode" value="overall" onchange="updateWeightVisibility()"> overall</label>
-                    </span>
-                </td>
-            </tr>
-
             <tr id="deliberationRoundsRow" style="display: none;">
                 <td>
-                    amount of deliberation rounds <input type="number" min="1" max="10" value="3" style="width:3em; margin-left: 0.5rem;" id="deliberationRounds">
+                    Amount of deliberation rounds in one repeat <input type="number" min="1" max="10" value="3" style="width:3em; margin-left: 0.5rem;" id="deliberationRounds">
                 </td>
             </tr>
             <tr id="modelSelectionRow" style="display: none;">
@@ -280,6 +270,15 @@
                         <option value="gemini-2.0-flash">Gemini 2.0 Flash (15 RPM, Large Context)</option>
                         <option value="gemini-2.0-flash-lite">Gemini 2.0 Flash-Lite (30 RPM, Fastest)</option>
                     </select>
+                </td>
+            </tr>
+            <tr id="repeatRow" style="display: none;">
+                <td>
+                    Repeat <input type="number" min="1" value="10" style="width:3em; margin-left: 0.5rem; margin-right: 0.5rem;" id="repeatCount" oninput="updateTimesText()"> <span id="timesText">times</span>
+                    <span style="margin-left: 1rem;">
+                        <label><input type="radio" name="repeatMode" value="individual" checked onchange="updateWeightVisibility()"> each juror-case combination</label>
+                        <label style="margin-left: 0.5rem;"><input type="radio" name="repeatMode" value="overall" onchange="updateWeightVisibility()"> overall</label>
+                    </span>
                 </td>
             </tr>
             <tr id="runRow" style="display: none;">
