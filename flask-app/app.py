@@ -304,6 +304,7 @@ def run_notebook():
         repeat_count = int(request.args.get('repeat_count', 3))  # How many times to run the notebook
         repeat_mode = request.args.get('repeat_mode', 'individual')
         deliberation_rounds = int(request.args.get('deliberation_rounds', 3))  # Rounds within each notebook run
+        selected_model = request.args.get('selected_model', 'gemini-2.0-flash-001')  # AI model to use
         
         # Get file metadata from the upload results (stored in session or temp file)
         # For now, we'll read the files and their categories from the directories
@@ -473,6 +474,7 @@ try:
     print(f"  case_file='{case_file_path}'")
     print(f"  scenario_number=1")
     print(f"  total_rounds={deliberation_rounds}")
+    print(f"  model={selected_model}")
     
     # Call run_deliberation with uploaded files from temp directories
     run_deliberation(
@@ -480,7 +482,8 @@ try:
         case_file="{case_file_path}",
         scenario_number=1,
         total_rounds={deliberation_rounds},  # Use deliberation rounds parameter
-        save_to_file=True
+        save_to_file=True,
+        model="{selected_model}"  # Use selected AI model
     )
     print(f"Run {run_number} completed successfully!")
     
