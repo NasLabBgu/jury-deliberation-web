@@ -301,8 +301,9 @@ def run_notebook():
     """Execute the Jupyter notebook with uploaded files and stream results"""
     try:
         # Get parameters from query string
-        total_rounds = int(request.args.get('repeat_count', 3))
+        repeat_count = int(request.args.get('repeat_count', 3))  # How many times to run the notebook
         repeat_mode = request.args.get('repeat_mode', 'individual')
+        deliberation_rounds = int(request.args.get('deliberation_rounds', 3))  # Rounds within each notebook run
         
         # Get file metadata from the upload results (stored in session or temp file)
         # For now, we'll read the files and their categories from the directories
@@ -352,7 +353,7 @@ def run_notebook():
             if repeat_mode == 'individual':
                 # Run each unique combination repeat_count times
                 pairs = []
-                for repeat in range(total_rounds):
+                for repeat in range(repeat_count):
                     for juror_file in juror_files_info:
                         for case_file in case_files_info:
                             pairs.append({
@@ -379,7 +380,7 @@ def run_notebook():
                 pairs = []
                 used_combinations = set()
                 
-                for run_num in range(1, total_rounds + 1):
+                for run_num in range(1, repeat_count + 1):
                     # Try to find a unique combination first
                     attempts = 0
                     max_attempts = 50
@@ -417,9 +418,9 @@ def run_notebook():
                 # Log the execution plan
                 if repeat_mode == 'individual':
                     unique_combinations = len(juror_files_info) * len(case_files_info)
-                    yield f"data: {json.dumps({'status': 'output', 'message': f'Running each of {unique_combinations} unique juror-case combinations {total_rounds} times ({total_pairs} total runs)'})}\n\n"
+                    yield f"data: {json.dumps({'status': 'output', 'message': f'Running each of {unique_combinations} unique juror-case combinations {repeat_count} times ({total_pairs} total runs)'})}\n\n"
                 else:
-                    yield f"data: {json.dumps({'status': 'output', 'message': f'Running {total_rounds} total deliberations with weighted selection'})}\n\n"
+                    yield f"data: {json.dumps({'status': 'output', 'message': f'Running {repeat_count} total deliberations with weighted selection'})}\n\n"
                 
                 # Execute each pair
                 for i, pair in enumerate(execution_pairs):
@@ -431,7 +432,7 @@ def run_notebook():
                         repeat_iteration = pair['repeat_iteration']
                         unique_combinations = len(juror_files_info) * len(case_files_info)
                         combination_number = ((run_number - 1) % unique_combinations) + 1
-                        run_header = f'\n=== Run {run_number}/{total_pairs} (Combination {combination_number}, Repeat {repeat_iteration}/{total_rounds}) ==='
+                        run_header = f'\n=== Run {run_number}/{total_pairs} (Combination {combination_number}, Repeat {repeat_iteration}/{repeat_count}) ==='
                     else:
                         run_header = f'\n=== Run {run_number}/{total_pairs} ==='
                         
@@ -471,14 +472,14 @@ try:
     print(f"  jury_file='{jury_file_path}'")
     print(f"  case_file='{case_file_path}'")
     print(f"  scenario_number=1")
-    print(f"  total_rounds=1")  # Each execution runs only 1 round
+    print(f"  total_rounds={deliberation_rounds}")
     
     # Call run_deliberation with uploaded files from temp directories
     run_deliberation(
         jury_file="{jury_file_path}",
         case_file="{case_file_path}",
         scenario_number=1,
-        total_rounds=1,  # Each pair runs once
+        total_rounds={deliberation_rounds},  # Use deliberation rounds parameter
         save_to_file=True
     )
     print(f"Run {run_number} completed successfully!")
